@@ -1,0 +1,89 @@
+{
+  "document": "premium-electronics-storefront-final-implementation-spec.md",
+  "status": "AUTHORITATIVE",
+  "business_model": "DIRECT_RETAIL_DISTRIBUTOR_API_FIRST",
+  "merchant_of_record": "BUSINESS",
+  "customer_checkout": "STRIPE",
+  "stripe": {
+    "payment_model": "PAYMENT_INTENT",
+    "frontend_ui": "PAYMENT_ELEMENT_OR_EXPLICITLY_APPROVED_STRIPE_CHECKOUT",
+    "authoritative_purchase_trigger": "SIGNED_BACKEND_WEBHOOK",
+    "all_purchases_use_webhook_state_machine": true,
+    "fulfillment_success_event": "payment_intent.succeeded",
+    "processing_is_fulfillable": false,
+    "browser_callback_is_authoritative": false,
+    "required_initial_events": [
+      "payment_intent.succeeded",
+      "payment_intent.processing",
+      "payment_intent.payment_failed",
+      "payment_intent.canceled",
+      "charge.refunded",
+      "charge.dispute.created",
+      "charge.dispute.updated",
+      "charge.dispute.closed"
+    ]
+  },
+  "fulfillment": {
+    "owned_inventory": "INTERNAL",
+    "distributor_inventory": "DISTRIBUTOR_PURCHASE_ORDER_AFTER_VERIFIED_PAYMENT_AND_RISK_RELEASE",
+    "mixed_cart": "ONE_STRIPE_CHECKOUT_THEN_SPLIT_FULFILLMENT_GROUPS"
+  },
+  "louisiana_resale_certificate": {
+    "status": "PENDING",
+    "approval_date": null,
+    "expiration_date": null,
+    "certificate_document_ref": null,
+    "must_populate_from_issued_certificate": true,
+    "may_be_used_for_business_consumption": false,
+    "default_distributor_listing_mode": "DRAFT_OR_COMING_SOON",
+    "distributor_acceptance_tracked_separately": true
+  },
+  "mercury": {
+    "checkout_provider": false,
+    "role": [
+      "BUSINESS_BANKING",
+      "RECONCILIATION",
+      "VERIFIED_INVOICE_WORKFLOWS"
+    ],
+    "iframe_checkout_assumed": false
+  },
+  "prohibited": [
+    "FRONTEND_FULFILLMENT_TRIGGER",
+    "BROWSER_REDIRECT_AS_PAYMENT_PROOF",
+    "UNVERIFIED_MERCURY_IFRAME",
+    "RETAILER_CART_SCRAPING",
+    "FABRICATED_SCARCITY",
+    "UNIVERSAL_STATE_TAX_THRESHOLD",
+    "RESALE_CERTIFICATE_FOR_BUSINESS_USE"
+  ],
+  "louisiana_registration": {
+    "legal_business_name": "WADE LABS LLC",
+    "registration_status": "PROCESSED",
+    "tax_number_storage": "ENCRYPTED_SERVER_SIDE_ONLY",
+    "latap_username_storage": "ENCRYPTED_SERVER_SIDE_ONLY"
+  },
+  "profit_priority": {
+    "optimization_target": "EXPECTED_CONTRIBUTION",
+    "hard_margin_floor": true,
+    "hard_contribution_floor": true,
+    "order_level_profit_recheck": true,
+    "supplier_cost_tolerance": true,
+    "suppress_unprofitable_listings": true,
+    "safe_default": "HOLD_OR_SUPPRESS"
+  },
+  "advertising_marketing_growth_uiux": {
+    "included": true,
+    "primary_marketing_metric": "AFTER_MARKETING_EXPECTED_CONTRIBUTION",
+    "allowable_cac_required": true,
+    "ltv_haircut_required": true,
+    "maximum_daily_budget_increase_bps": 1000,
+    "maximum_weekly_revenue_growth_bps": 1000,
+    "growth_style": "MODEST_STEADY_REVERSIBLE",
+    "campaign_scaling_requires_mature_data": true,
+    "growth_requires_cash_coverage": true,
+    "ux_primary_metric": "CONTRIBUTION_PER_QUALIFIED_SESSION",
+    "accessibility_guardrail": true,
+    "performance_guardrail": true,
+    "dark_patterns_prohibited": true
+  }
+}

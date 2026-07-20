@@ -1,0 +1,16 @@
+{
+  "legal_business_name": "WADE LABS LLC",
+  "jurisdiction": "LA",
+  "ldr_registration_status": "PROCESSED",
+  "ldr_tax_number": "STORE_ENCRYPTED_OUTSIDE_SOURCE_CONTROL",
+  "latap_username": "STORE_ENCRYPTED_OUTSIDE_SOURCE_CONTROL",
+  "resale_certificate_status": "PENDING",
+  "resale_certificate_approval_date": null,
+  "resale_certificate_expiration_date": null,
+  "resale_certificate_document_ref": null,
+  "notes": [
+    "Registration correspondence has been received.",
+    "Do not mark the resale certificate active until the issued certificate is downloaded and validated.",
+    "Never expose tax identifiers or LaTAP credentials to the browser, logs, analytics, public documentation, or source control."
+  ]
+}

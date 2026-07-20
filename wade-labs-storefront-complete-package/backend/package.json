@@ -1,0 +1,20 @@
+{
+  "name": "storefront-profit-backend-v2",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Profit-first pricing, Louisiana compliance, capital insulation, fulfillment, marketing profitability, modest growth gates, and UI/UX experiment controls.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "demo": "node examples/demo.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "knex": "^3.1.0",
+    "pg": "^8.11.3",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {}
+}
