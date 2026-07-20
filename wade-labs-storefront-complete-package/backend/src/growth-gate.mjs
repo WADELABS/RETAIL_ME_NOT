@@ -62,7 +62,7 @@ export function evaluateGrowthReadiness(input) {
   let maximumNextWeeklyRevenueCents = currentWeeklyRevenueCents;
   if (blockers.length === 0 && warnings.length === 0) {
     decision = 'EXPAND_MODESTLY';
-    maximumNextWeeklyRevenueCents = currentWeeklyRevenueCents + Math.floor((currentWeeklyRevenueCents * policy.maximumWeeklyRevenueGrowthBps) / 10_000);
+    maximumNextWeeklyRevenueCents = currentWeeklyRevenueCents + (currentWeeklyRevenueCents * BigInt(policy.maximumWeeklyRevenueGrowthBps) / 10000n);
   } else if (blockers.length > 0) {
     decision = 'FREEZE_AND_REPAIR';
   }

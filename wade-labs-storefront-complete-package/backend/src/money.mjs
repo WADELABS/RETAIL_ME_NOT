@@ -1,7 +1,8 @@
 /** Integer-money helpers. All monetary amounts are integer cents. */
 
 export function assertIntegerCents(value, name) {
-  if (!Number.isSafeInteger(value) || value < 0) {
+  const isOk = (typeof value === 'bigint' && value >= 0) || (Number.isSafeInteger(value) && value >= 0);
+  if (!isOk) {
     throw new TypeError(`${name} must be a non-negative safe integer number of cents`);
   }
 }
