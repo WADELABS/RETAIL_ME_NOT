@@ -57,28 +57,3 @@ For each supplier offer, the engine computes:
 - Supplier score based on contribution, reliability, stock, and delivery
 
 The highest-scoring viable supplier offer becomes the active listing source. If no offer can meet the floor within the competitive ceiling, the product is suppressed.
-
-
-## Version 1.1 Additions
-
-- Louisiana registration and pending resale-certificate gate
-- Order-level expected-contribution guard
-- Durable webhook inbox reference logic
-- Mixed internal/distributor fulfillment orchestrator
-- Authorized supplier catalog import guard
-- Compliance/profit/event PostgreSQL migration
-- Detailed roadmap, design strategy, and backend blueprint
-
-Current lock:
-
-```text
-LDR_REGISTRATION_STATUS=PROCESSED
-LOUISIANA_RESALE_CERTIFICATE_STATUS=PENDING
-```
-
-No taxpayer number, LaTAP username, certificate, or provider credential is stored in this package.
-
-
-## Marketing and Growth Controls
-
-Version 1.2 adds campaign profitability, allowable CAC, conservative LTV, budget caps, channel concentration limits, exploration isolation, growth readiness, UI/UX contribution experiments, and marketing/growth database tables.

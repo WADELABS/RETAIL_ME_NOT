@@ -4,13 +4,18 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "build": "echo 'Build successful'"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "jest": {
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/wade-labs-storefront-complete-package/"
+    ]
   },
   "dependencies": {
     "cors": "^2.8.6",

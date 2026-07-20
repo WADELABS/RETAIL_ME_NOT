@@ -6,7 +6,9 @@
   "description": "Profit-first pricing, Louisiana compliance, capital insulation, fulfillment, marketing profitability, modest growth gates, and UI/UX experiment controls.",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "demo": "node examples/demo.mjs"
+    "demo": "node examples/demo.mjs",
+    "migrate": "knex migrate:latest",
+    "build": "node --check src/index.mjs"
   },
   "engines": {
     "node": ">=20"

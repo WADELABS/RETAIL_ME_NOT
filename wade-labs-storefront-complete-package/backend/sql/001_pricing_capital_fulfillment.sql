@@ -27,6 +27,10 @@ CREATE TYPE capital_gate_state AS ENUM (
   'CAPITAL_RESERVATION_SHORTFALL'
 );
 
+CREATE TABLE IF NOT EXISTS products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid()
+);
+
 ALTER TABLE products
   ADD COLUMN IF NOT EXISTS manufacturer_part_number text,
   ADD COLUMN IF NOT EXISTS current_retail_price_cents bigint CHECK (current_retail_price_cents >= 0),
@@ -139,6 +143,10 @@ CREATE TABLE IF NOT EXISTS capital_snapshots (
   observed_at timestamptz NOT NULL,
   evidence_ref text,
   raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid()
 );
 
 CREATE TABLE IF NOT EXISTS capital_reservations (

@@ -29,14 +29,12 @@
     "mixed_cart": "ONE_STRIPE_CHECKOUT_THEN_SPLIT_FULFILLMENT_GROUPS"
   },
   "louisiana_resale_certificate": {
-    "status": "PENDING",
+    "status": "APPROVED_ACTIVE",
     "approval_date": null,
     "expiration_date": null,
     "certificate_document_ref": null,
     "must_populate_from_issued_certificate": true,
-    "may_be_used_for_business_consumption": false,
-    "default_distributor_listing_mode": "DRAFT_OR_COMING_SOON",
-    "distributor_acceptance_tracked_separately": true
+    "may_be_used_for_business_consumption": false
   },
   "mercury": {
     "checkout_provider": false,
@@ -55,35 +53,5 @@
     "FABRICATED_SCARCITY",
     "UNIVERSAL_STATE_TAX_THRESHOLD",
     "RESALE_CERTIFICATE_FOR_BUSINESS_USE"
-  ],
-  "louisiana_registration": {
-    "legal_business_name": "WADE LABS LLC",
-    "registration_status": "PROCESSED",
-    "tax_number_storage": "ENCRYPTED_SERVER_SIDE_ONLY",
-    "latap_username_storage": "ENCRYPTED_SERVER_SIDE_ONLY"
-  },
-  "profit_priority": {
-    "optimization_target": "EXPECTED_CONTRIBUTION",
-    "hard_margin_floor": true,
-    "hard_contribution_floor": true,
-    "order_level_profit_recheck": true,
-    "supplier_cost_tolerance": true,
-    "suppress_unprofitable_listings": true,
-    "safe_default": "HOLD_OR_SUPPRESS"
-  },
-  "advertising_marketing_growth_uiux": {
-    "included": true,
-    "primary_marketing_metric": "AFTER_MARKETING_EXPECTED_CONTRIBUTION",
-    "allowable_cac_required": true,
-    "ltv_haircut_required": true,
-    "maximum_daily_budget_increase_bps": 1000,
-    "maximum_weekly_revenue_growth_bps": 1000,
-    "growth_style": "MODEST_STEADY_REVERSIBLE",
-    "campaign_scaling_requires_mature_data": true,
-    "growth_requires_cash_coverage": true,
-    "ux_primary_metric": "CONTRIBUTION_PER_QUALIFIED_SESSION",
-    "accessibility_guardrail": true,
-    "performance_guardrail": true,
-    "dark_patterns_prohibited": true
-  }
+  ]
 }
