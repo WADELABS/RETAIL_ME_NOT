@@ -13,6 +13,7 @@
     "test:billing": "node --import tsx --test tests/e2e-billing-telemetry.test.ts",
     "test:privacy": "node --import tsx --test services/telemetry-intelligence/tests/*.test.ts",
     "test:identity": "node --import tsx --test services/identity/tests/*.test.ts",
+    "test:risk": "node --import tsx --test services/risk/tests/*.test.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {

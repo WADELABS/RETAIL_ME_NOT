@@ -59,7 +59,10 @@ jobs:
           echo "10. Running Identity and Secure Tokenization tests..."
           npm run test:identity
           
-          echo "11. Running platform-core legacy backend tests..."
+          echo "11. Running Risk and Fraud Prevention tests..."
+          npm run test:risk
+          
+          echo "12. Running platform-core legacy backend tests..."
           npm test --prefix platform-core/backend
           
           echo "=== VERIFICATION COMPLETE ===" >> release-test-execution.log

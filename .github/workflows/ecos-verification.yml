@@ -83,9 +83,14 @@ jobs:
           echo "--- RUNNING STAGE 10: Identity and Secure Tokenization tests ---" >> ecos-test-execution.log
           npm run test:identity 2>&1 | tee -a ecos-test-execution.log
 
-      - name: 11. Run platform-core legacy backend tests
+      - name: 11. Run Risk and Fraud Prevention tests
         run: |
-          echo "--- RUNNING STAGE 11: platform-core legacy backend tests ---" >> ecos-test-execution.log
+          echo "--- RUNNING STAGE 11: Risk and Fraud Prevention tests ---" >> ecos-test-execution.log
+          npm run test:risk 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 12. Run platform-core legacy backend tests
+        run: |
+          echo "--- RUNNING STAGE 12: platform-core legacy backend tests ---" >> ecos-test-execution.log
           npm test --prefix platform-core/backend 2>&1 | tee -a ecos-test-execution.log
 
       - name: Finalize Audit Log
