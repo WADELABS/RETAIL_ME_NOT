@@ -1,38 +1,60 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildMarketSnapshot,
   calculateMinimumViablePrice,
   evaluateProductListing,
+  buildMarketSnapshot,
 } from '../src/index.mjs';
+
+// --- Test Data Setup ---
 
 const NOW = '2026-07-20T14:00:00.000Z';
 
-function offer(overrides = {}) {
+// Mock data now reflects the new schema
+const mockSuppliers = [
+  {
+    supplier_id: 'distributor-a',
+    name: 'Distributor A',
+    reliability_score: 0.98,
+    average_ship_days: 2,
+  },
+  {
+    supplier_id: 'distributor-b',
+    name: 'Distributor B',
+    reliability_score: 0.95,
+    average_ship_days: 5,
+  },
+  {
+    supplier_id: 'distributor-c',
+    name: 'Distributor C (Slow)',
+    reliability_score: 0.90,
+    average_ship_days: 10,
+  }
+];
+
+function createOffer(overrides = {}) {
   return {
-    supplierId: 'DISTRIBUTOR_A',
-    offerId: 'offer_a',
-    wholesaleCostCents: 85_000,
-    fulfillmentCostCents: 1_000,
-    dropShipFeeCents: 0,
-    packagingCostCents: 0,
-    shippingSubsidyCents: 0,
-    supplierTaxCents: 0,
-    availableQuantity: 10,
-    checkedAt: NOW,
-    reliabilityBps: 9_000,
-    estimatedDeliveryDays: 3,
+    offer_id: `offer-${Math.random()}`,
+    supplier_id: 'distributor-a',
+    sku: 'SKU123',
+    wholesale_cost_cents: 80000, // $800
+    dropship_fee_cents: 500,
+    shipping_cost_cents: 1500,
+    inventory_quantity: 100,
+    map_price_cents: null,
+    warranty_source: 'MANUFACTURER',
+    last_verified: NOW,
     ...overrides,
   };
 }
 
-function competitor(priceCents, overrides = {}) {
+function createCompetitor(priceCents, overrides = {}) {
   return {
     competitorId: `c_${priceCents}`,
     priceCents,
     shippingCents: 0,
     publicDiscountCents: 0,
-    trustBps: 9_000,
+    trustBps: 9000,
     observedAt: NOW,
     inStock: true,
     comparable: true,
@@ -41,75 +63,99 @@ function competitor(priceCents, overrides = {}) {
   };
 }
 
-test('minimum viable floor protects both margin and minimum contribution', () => {
-  const result = calculateMinimumViablePrice(offer(), {
-    targetMarginBps: 600,
-    minimumContributionCents: 2_500,
-  });
-  assert.ok(result.minimumViablePriceCents > 86_000);
-  assert.equal(result.minimumViablePriceCents, Math.max(result.marginFloorCents, result.contributionFloorCents));
+// --- Test Cases ---
+
+test('calculateMinimumViablePrice implements hardened formula', () => {
+  const offer = createOffer({ wholesale_cost_cents: 80000 }); // $800 cost
+  const policy = {
+    minimumContributionCents: 7500, // $75
+    fraudReserveBps: 200, // 2%
+    returnReserveBps: 500, // 5%
+    warrantyReserveBps: 300, // 3%
+    processingFeeBps: 290,
+    processingFlatFeeCents: 30,
+    estimatedTaxBps: 0, // Simplify for testing
+  };
+  // Total variable rate = 2% + 5% + 3% + 2.9% = 12.9%
+  // Base cost = $800 (wholesale) + $5 (dropship) + $15 (shipping) + $0.30 (flat fee) + $75 (profit) = $895.30
+  // Price = 89530 / (1 - 0.129) = 89530 / 0.871 = 102789.9
+  const { minimumViablePriceCents } = calculateMinimumViablePrice(offer, policy);
+  assert.ok(minimumViablePriceCents > 102700, `Expected over 102700, got ${minimumViablePriceCents}`);
+  assert.equal(minimumViablePriceCents, 102790); // ceil(102789.9)
 });
 
-test('market snapshot ignores stale and low-trust observations', () => {
+test('evaluateProductListing selects best supplier based on new score', async () => {
+  const offers = [
+    createOffer({ supplier_id: 'distributor-a', wholesale_cost_cents: 80000 }), // Best score
+    createOffer({ supplier_id: 'distributor-b', wholesale_cost_cents: 79000 }), // Cheaper, but lower score
+    createOffer({ supplier_id: 'distributor-c', wholesale_cost_cents: 78000 }), // Cheapest, but slow
+  ];
+
+  const result = await evaluateProductListing({
+    sku: 'SKU123',
+    suppliers: mockSuppliers,
+    supplierOffers: offers,
+    competitorObservations: [createCompetitor(105000)],
+    now: NOW,
+  });
+
+  assert.equal(result.isListed, true);
+  assert.equal(result.selectedSupplierId, 'distributor-a', 'Should select Distributor A for its high score despite higher cost');
+});
+
+test('evaluateProductListing suppresses listing due to low margin', async () => {
+  const offers = [
+    createOffer({ wholesale_cost_cents: 95000 }), // $950
+  ];
+  const competitors = [
+    createCompetitor(98000), // Market price is too low to meet $75 min profit
+  ];
+
+  const result = await evaluateProductListing({
+    sku: 'SKU123',
+    suppliers: mockSuppliers,
+    supplierOffers: offers,
+    competitorObservations: competitors,
+    now: NOW,
+    policy: { minimumContributionCents: 7500 }
+  });
+
+  assert.equal(result.isListed, false, 'Listing should be suppressed');
+  assert.equal(result.status, 'SUPPRESSED_LOW_MARGIN', 'Suppression reason should be low margin');
+});
+
+test('evaluateProductListing suppresses for no viable supplier (stale inventory)', async () => {
+    const staleOffer = createOffer({ last_verified: '2026-01-01T00:00:00.000Z' });
+    const result = await evaluateProductListing({
+      sku: 'SKU456',
+      suppliers: mockSuppliers,
+      supplierOffers: [staleOffer],
+      now: NOW,
+    });
+    assert.equal(result.isListed, false);
+    assert.equal(result.status, 'SUPPRESSED_STALE_INVENTORY');
+});
+
+test('evaluateProductListing suppresses for MAP restriction', async () => {
+    const mapOffer = createOffer({ map_price_cents: 110000 });
+    const competitors = [createCompetitor(105000)]; // Market is below MAP
+    const result = await evaluateProductListing({
+      sku: 'SKU789',
+      suppliers: mockSuppliers,
+      supplierOffers: [mapOffer],
+      competitorObservations: competitors,
+      now: NOW,
+    });
+    assert.equal(result.isListed, false);
+    assert.equal(result.status, 'SUPPRESSED_MAP_RESTRICTION');
+});
+
+test('buildMarketSnapshot still works as expected', () => {
   const snapshot = buildMarketSnapshot([
-    competitor(98_999),
-    competitor(50_000, { trustBps: 2_000 }),
-    competitor(60_000, { observedAt: '2026-07-10T00:00:00.000Z' }),
+    createCompetitor(98_999),
+    createCompetitor(50_000, { trustBps: 2_000 }),
+    createCompetitor(60_000, { observedAt: '2026-07-10T00:00:00.000Z' }),
   ], {}, NOW);
   assert.equal(snapshot.accepted.length, 1);
   assert.equal(snapshot.marketPositionCents, 98_999);
-});
-
-test('pricing engine publishes a competitive price without crossing its floor', () => {
-  const result = evaluateProductListing({
-    productId: 'p1',
-    variantId: 'v1',
-    now: NOW,
-    supplierOffers: [offer()],
-    competitorObservations: [competitor(98_999), competitor(99_499)],
-  });
-  assert.equal(result.isListed, true);
-  assert.ok(result.optimizedPriceCents >= result.selected.hardFloorCents);
-  assert.ok(result.expectedMarginBps >= 600);
-  assert.ok(result.expectedContributionCents >= 2_500);
-});
-
-test('race-to-the-bottom competitor price suppresses an unviable listing', () => {
-  const result = evaluateProductListing({
-    productId: 'p2',
-    variantId: 'v2',
-    now: NOW,
-    supplierOffers: [offer({ wholesaleCostCents: 95_000 })],
-    competitorObservations: [competitor(96_000)],
-  });
-  assert.equal(result.isListed, false);
-  assert.equal(result.status, 'SUPPRESSED_NO_VIABLE_SOURCE');
-  assert.ok(result.evaluations.some((item) => item.status === 'SUPPRESSED_LOW_MARGIN'));
-});
-
-test('engine selects the viable supplier offer with the strongest deterministic score', () => {
-  const result = evaluateProductListing({
-    productId: 'p3',
-    variantId: 'v3',
-    now: NOW,
-    supplierOffers: [
-      offer({ supplierId: 'SLOW_LOW_COST', offerId: 'slow', wholesaleCostCents: 84_000, reliabilityBps: 7_100, estimatedDeliveryDays: 10 }),
-      offer({ supplierId: 'FAST_RELIABLE', offerId: 'fast', wholesaleCostCents: 84_500, reliabilityBps: 9_800, estimatedDeliveryDays: 2 }),
-    ],
-    competitorObservations: [competitor(99_999), competitor(100_499)],
-  });
-  assert.equal(result.isListed, true);
-  assert.equal(result.selectedSupplierId, 'FAST_RELIABLE');
-});
-
-test('no market data uses the controlled standard markup fallback', () => {
-  const result = evaluateProductListing({
-    productId: 'p4',
-    variantId: 'v4',
-    now: NOW,
-    supplierOffers: [offer()],
-    competitorObservations: [],
-  });
-  assert.equal(result.isListed, true);
-  assert.equal(result.status, 'ACTIVE_NO_MARKET_DATA');
 });

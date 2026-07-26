@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Distributor Profile",
+  "description": "Schema for a supplier/distributor profile, aligned with the supplier intelligence initiative.",
+  "type": "object",
+  "properties": {
+    "supplier_id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1 },
+    "account_status": { "type": "string", "enum": ["PENDING_REVIEW", "ACTIVE", "DISABLED"] },
+    "dropship_enabled": { "type": "boolean" },
+    "resale_certificate_required": { "type": "boolean" },
+    "warehouse_regions": { "type": "array", "items": { "type": "string" } },
+    "api_available": { "type": "boolean" },
+    "csv_import_available": { "type": "boolean" },
+    "reliability_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "return_policy_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "average_ship_days": { "type": ["number", "null"], "minimum": 0 },
+    "last_sync": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": [
+    "name",
+    "account_status",
+    "dropship_enabled"
+  ]
+}
