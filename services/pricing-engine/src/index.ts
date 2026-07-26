@@ -1,5 +1,7 @@
 import { InventoryNode } from '@ecos/inventory-availability';
 import { calculateSupplierScore } from '../../../platform-core/backend/src/supplier-intelligence/supplier-score-engine.mjs';
+import { consumer } from '../../event-gateway/consumer/index';
+import { DemandSpikeDetectedEventSchema, DemandSpikeDetectedPayload } from '../../../packages/events/src/index';
 
 export interface SourcingOption {
   providerId: string;
@@ -32,19 +34,41 @@ export interface OptimizationRecommendation {
 }
 
 export class SourcingAndPricingOptimizer {
+  // Store active demand surcharges to apply real-time dynamic pricing
+  private activeSurcharges: Map<string, number> = new Map();
+
+  public initialize(): void {
+    console.log('[Pricing Engine] Initializing real-time telemetry listners...');
+
+    // Subscribe to demand spikes to dynamically adjust pricing floors
+    consumer.subscribe(
+      'telemetry',
+      'demand.trending-spike',
+      DemandSpikeDetectedEventSchema,
+      async (payload: DemandSpikeDetectedPayload) => {
+        console.log(`[Pricing Engine] Dynamic Pricing Triggered: Applying +${(payload.marginSurchargeBps / 100).toFixed(1)}% surcharge to SKU: ${payload.sku}`);
+        this.activeSurcharges.set(payload.sku, payload.marginSurchargeBps);
+      }
+    );
+  }
+
   /**
    * Calculates the exact, cost-aware Minimum Selling Price required to fulfill a transaction safely.
    * Solves: Price = (Base Costs + Flat Fees) / (1 - Sum of Variable Rates)
    */
-  public calculateMinimumViablePrice(option: SourcingOption, policy: PricingPolicy): number {
+  public calculateMinimumViablePrice(sku: string, option: SourcingOption, policy: PricingPolicy): number {
     const allInCostCents = option.wholesaleCostCents + option.dropshipFeeCents + option.shippingCostCents;
     const baseCost = allInCostCents + policy.processingFlatFeeCents + policy.minimumContributionCents;
+
+    // Check if there is an active real-time telemetry demand surcharge for this SKU
+    const demandSurchargeBps = this.activeSurcharges.get(sku) || 0;
 
     const totalVariableBps =
       policy.fraudReserveBps +
       policy.returnReserveBps +
       policy.warrantyReserveBps +
-      policy.processingFeeBps;
+      policy.processingFeeBps +
+      demandSurchargeBps; // Dynamic surcharge injected
 
     if (totalVariableBps >= 10000) {
       throw new RangeError('Sum of variable reserves and processing fees must be less than 100%');
@@ -59,7 +83,7 @@ export class SourcingAndPricingOptimizer {
    */
   public optimize(sku: string, options: SourcingOption[], policy: PricingPolicy): OptimizationRecommendation {
     const evaluations = options.map(option => {
-      const minimumPriceCents = this.calculateMinimumViablePrice(option, policy);
+      const minimumPriceCents = this.calculateMinimumViablePrice(sku, option, policy);
 
       // Estimate expected contribution at the minimum price (proves baseline profitability)
       const expectedContributionCents = policy.minimumContributionCents;

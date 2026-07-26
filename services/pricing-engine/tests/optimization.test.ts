@@ -28,7 +28,7 @@ test('Optimizer calculates exact cost-aware minimum selling price', () => {
   // Base Cost = $800 + $5 + $15 + $0.30 + $75 = $895.30
   // Variable Rates = 2% (fraud) + 5% (return) + 3% (warranty) + 2.9% (stripe) = 12.9%
   // Price = $895.30 / (1 - 0.129) = $895.30 / 0.871 = 102789.89 -> ceil(102790)
-  const price = optimizer.calculateMinimumViablePrice(option, testPolicy);
+  const price = optimizer.calculateMinimumViablePrice('LAPTOP-WADE-01', option, testPolicy);
   assert.equal(price, 102790);
 });
 
