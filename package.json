@@ -1,29 +1,8 @@
 {
-  "name": "retailmenot",
-  "version": "1.0.0",
-  "description": "",
-  "main": "app.js",
+  "name": "ecos-monorepo",
+  "private": true,
   "scripts": {
-    "test": "jest",
-    "build": "echo 'Build successful'"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "jest": {
-    "testEnvironment": "node",
-    "testPathIgnorePatterns": [
-      "/node_modules/",
-      "/wade-labs-storefront-complete-package/"
-    ]
-  },
-  "dependencies": {
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "knex": "^3.3.0",
-    "sqlite3": "^6.0.1",
-    "stripe": "^22.3.2"
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "jest": "^30.4.2",
