@@ -84,7 +84,7 @@ export class DistributorAAdapter implements FulfillmentProvider {
       return result;
     } catch (error) {
       this.consecutiveFailures++;
-      console.error(`[Circuit Breaker] FAILURE: Request to ${this.name} failed (${this.consecutiveFailures}/${this.failureThreshold}). Error: ${error.message}`);
+      console.error(`[Circuit Breaker] FAILURE: Request to ${this.name} failed (${this.consecutiveFailures}/${this.failureThreshold}). Error: ${(error as any).message}`);
 
       if (this.consecutiveFailures >= this.failureThreshold) {
         this.circuitState = CircuitState.OPEN;
@@ -119,7 +119,7 @@ export class DistributorAAdapter implements FulfillmentProvider {
         return { sku, quantity: 100 }; // Mocked response for verified flow
       } catch (err) {
         clearTimeout(timeout);
-        throw new Error(`Connection timeout or failed response from ${this.apiEndpoint}: ${err.message}`);
+        throw new Error(`Connection timeout or failed response from ${this.apiEndpoint}: ${(err as any).message}`);
       }
     });
   }
@@ -139,7 +139,7 @@ export class DistributorAAdapter implements FulfillmentProvider {
         return { shipmentId: `DA-${Math.random().toString(36).substring(7)}`, status: 'ACCEPTED' };
       } catch (err) {
         clearTimeout(timeout);
-        throw new Error(`Fulfillment request failed for ${this.apiEndpoint}: ${err.message}`);
+        throw new Error(`Fulfillment request failed for ${this.apiEndpoint}: ${(err as any).message}`);
       }
     });
   }
@@ -157,7 +157,7 @@ export class DistributorAAdapter implements FulfillmentProvider {
         return { status: 'SHIPPED', trackingNumber: `1Z${Math.random().toString().substring(2, 18)}` };
       } catch (err) {
         clearTimeout(timeout);
-        throw new Error(`Tracking fetch failed for ${this.apiEndpoint}: ${err.message}`);
+        throw new Error(`Tracking fetch failed for ${this.apiEndpoint}: ${(err as any).message}`);
       }
     });
   }

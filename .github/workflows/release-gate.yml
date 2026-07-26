@@ -53,7 +53,10 @@ jobs:
           echo "8. Running Real-time Billing Telemetry tests..."
           npm run test:billing
           
-          echo "9. Running platform-core legacy backend tests..."
+          echo "9. Running Privacy and Data Deletion tests..."
+          npm run test:privacy
+          
+          echo "10. Running platform-core legacy backend tests..."
           npm test --prefix platform-core/backend
           
           echo "=== VERIFICATION COMPLETE ===" >> release-test-execution.log
