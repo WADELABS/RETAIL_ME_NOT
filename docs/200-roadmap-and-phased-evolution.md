@@ -32,9 +32,10 @@ This approach:
 
 ## 3. Phase Details & Transition Triggers
 
-### Phase 1: The Transactional MVP (Core Launch)
+### Phase 1: The Transactional MVP (Core Launch) - "Get In Where We Fit In"
+-   **The Tactic:** While high-end B2B corporate tech is our long-term strategic target, we start scrappy. We "get in where we fit in"—listing and selling whatever electronics products (consumer laptops, standard GPUs, basic office accessories) are accessible and profitable from our initial distributor feeds. A profitable checkout is a victory; it proves the operational spine and begins generating operational cash.
 -   **Objective:** Get the core transactional loop built, running, and live. Establish our first commercial revenue path.
--   **Catalog Scope:** Premium electronics hardware (laptops, GPUs, accessories) sourced from Distributor A.
+-   **Catalog Scope:** Any available, high-margin electronics hardware (laptops, components, accessories) sourced from Distributor A.
 -   **Checkout & Payment:** Stripe credit card payment processing.
 -   **Fulfillment:** Autonomous B2B procurement Purchase Order (PO) issued to Distributor A via Stripe Issuing single-use virtual debit cards.
 -   **Logistics:** Distributor-managed logistics; ECOS ingests tracking numbers and passes them to customers under ECOS brand identity.
