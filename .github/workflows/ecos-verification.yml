@@ -1,0 +1,86 @@
+name: ECOS Verification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.14.0' # Matches the exact local verified version
+
+      - name: Install dependencies (Reproducible Build)
+        run: npm ci
+
+      - name: Initialize Verification Log & Record Metadata
+        run: |
+          echo "=== ECOS SYSTEM-WIDE VERIFICATION AUDIT ===" > ecos-test-execution.log
+          echo "Timestamp: $(date -u)" >> ecos-test-execution.log
+          echo "Node Version: $(node --version)" >> ecos-test-execution.log
+          echo "NPM Version: $(npm --version)" >> ecos-test-execution.log
+          echo "Commit SHA: $(git rev-parse HEAD)" >> ecos-test-execution.log
+          echo "==========================================" >> ecos-test-execution.log
+
+      - name: 1. Run root legacy Jest tests
+        run: |
+          echo "--- RUNNING STAGE 1: Jest root legacy tests ---" >> ecos-test-execution.log
+          npx jest 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 2. Run API and Event Contract tests
+        run: |
+          echo "--- RUNNING STAGE 2: API and Event Contract tests ---" >> ecos-test-execution.log
+          npm run test:contracts 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 3. Run Golden Path Transaction Simulation
+        run: |
+          echo "--- RUNNING STAGE 3: Golden Path Transaction Simulation ---" >> ecos-test-execution.log
+          npm run test:simulation 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 4. Run Catalog Ingestion & Product Matching tests
+        run: |
+          echo "--- RUNNING STAGE 4: Catalog Ingestion & Product Matching tests ---" >> ecos-test-execution.log
+          npm run test:ingestion 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 5. Run Sourcing & Pricing Optimization tests
+        run: |
+          echo "--- RUNNING STAGE 5: Sourcing & Pricing Optimization tests ---" >> ecos-test-execution.log
+          npm run test:optimization 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 6. Run Closed-Loop Adaptive Learning tests
+        run: |
+          echo "--- RUNNING STAGE 6: Closed-Loop Adaptive Learning tests ---" >> ecos-test-execution.log
+          npm run test:learning 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 7. Run Real-time Telemetry Surge Pricing tests
+        run: |
+          echo "--- RUNNING STAGE 7: Real-time Telemetry Surge Pricing tests ---" >> ecos-test-execution.log
+          npm run test:telemetry 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 8. Run platform-core legacy backend tests
+        run: |
+          echo "--- RUNNING STAGE 8: platform-core legacy backend tests ---" >> ecos-test-execution.log
+          npm test --prefix platform-core/backend 2>&1 | tee -a ecos-test-execution.log
+
+      - name: Finalize Audit Log
+        if: always()
+        run: |
+          echo "=== VERIFICATION COMPLETE ===" >> ecos-test-execution.log
+
+      - name: Upload Test Verification Artifacts
+        if: always() # Guarantees log upload for debugging even if tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecos-test-execution-log-${{ github.sha }} # Attaches the unique commit SHA to the artifact name
+          path: ecos-test-execution.log
