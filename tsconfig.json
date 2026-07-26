@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./packages/events" },
+    { "path": "./packages/tax-provider-contract" },
+    { "path": "./packages/fulfillment-provider-contract" },
+    { "path": "./services/decision-engine" },
+    { "path": "./services/orders" },
+    { "path": "./services/procurement" },
+    { "path": "./services/tax-compliance" },
+    { "path": "./services/treasury" },
+    { "path": "./services/catalog" },
+    { "path": "./services/distributor-adapter-a" },
+    { "path": "./services/catalog-ingestion" },
+    { "path": "./services/inventory-availability" },
+    { "path": "./services/pricing-engine" },
+    { "path": "./services/outcome-engine" },
+    { "path": "./services/telemetry-intelligence" }
+  ]
+}

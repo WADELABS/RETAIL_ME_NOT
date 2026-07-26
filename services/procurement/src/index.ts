@@ -28,7 +28,7 @@ type FulfillmentAssignedEvent = z.infer<typeof FulfillmentAssignedSchema>;
 export function initialize() {
   console.log('[Procurement Service] Initializing and subscribing to fulfillment events...');
 
-  consumer.subscribe(
+  consumer.subscribe<FulfillmentAssignedEvent['payload']>(
     'fulfillment',
     'fulfillment.assigned',
     FulfillmentAssignedSchema,

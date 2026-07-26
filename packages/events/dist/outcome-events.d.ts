@@ -1,0 +1,135 @@
+import { z } from 'zod';
+declare const FulfillmentOutcomePayloadSchema: z.ZodObject<{
+    outcomeId: z.ZodString;
+    orderId: z.ZodString;
+    providerId: z.ZodString;
+    decisionId: z.ZodString;
+    predictedDeliveryDays: z.ZodNumber;
+    actualDeliveryDays: z.ZodNumber;
+    deliveryDaysVariance: z.ZodNumber;
+    predictedWholesaleCostCents: z.ZodNumber;
+    actualWholesaleCostCents: z.ZodNumber;
+    costVarianceCents: z.ZodNumber;
+    status: z.ZodEnum<["SUCCESS", "LATE", "OVERCHARGED", "CANCELLED"]>;
+    recordedAt: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    status: "SUCCESS" | "LATE" | "OVERCHARGED" | "CANCELLED";
+    orderId: string;
+    providerId: string;
+    recordedAt: string;
+    outcomeId: string;
+    decisionId: string;
+    predictedDeliveryDays: number;
+    actualDeliveryDays: number;
+    deliveryDaysVariance: number;
+    predictedWholesaleCostCents: number;
+    actualWholesaleCostCents: number;
+    costVarianceCents: number;
+}, {
+    status: "SUCCESS" | "LATE" | "OVERCHARGED" | "CANCELLED";
+    orderId: string;
+    providerId: string;
+    recordedAt: string;
+    outcomeId: string;
+    decisionId: string;
+    predictedDeliveryDays: number;
+    actualDeliveryDays: number;
+    deliveryDaysVariance: number;
+    predictedWholesaleCostCents: number;
+    actualWholesaleCostCents: number;
+    costVarianceCents: number;
+}>;
+export declare const FulfillmentOutcomeRecordedSchema: z.ZodObject<{
+    eventId: z.ZodString;
+    timestamp: z.ZodString;
+    version: z.ZodLiteral<"1.0">;
+    correlationId: z.ZodString;
+} & {
+    domain: z.ZodLiteral<"analytics">;
+    eventName: z.ZodLiteral<"fulfillment.outcome.recorded">;
+    payload: z.ZodObject<{
+        outcomeId: z.ZodString;
+        orderId: z.ZodString;
+        providerId: z.ZodString;
+        decisionId: z.ZodString;
+        predictedDeliveryDays: z.ZodNumber;
+        actualDeliveryDays: z.ZodNumber;
+        deliveryDaysVariance: z.ZodNumber;
+        predictedWholesaleCostCents: z.ZodNumber;
+        actualWholesaleCostCents: z.ZodNumber;
+        costVarianceCents: z.ZodNumber;
+        status: z.ZodEnum<["SUCCESS", "LATE", "OVERCHARGED", "CANCELLED"]>;
+        recordedAt: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        status: "SUCCESS" | "LATE" | "OVERCHARGED" | "CANCELLED";
+        orderId: string;
+        providerId: string;
+        recordedAt: string;
+        outcomeId: string;
+        decisionId: string;
+        predictedDeliveryDays: number;
+        actualDeliveryDays: number;
+        deliveryDaysVariance: number;
+        predictedWholesaleCostCents: number;
+        actualWholesaleCostCents: number;
+        costVarianceCents: number;
+    }, {
+        status: "SUCCESS" | "LATE" | "OVERCHARGED" | "CANCELLED";
+        orderId: string;
+        providerId: string;
+        recordedAt: string;
+        outcomeId: string;
+        decisionId: string;
+        predictedDeliveryDays: number;
+        actualDeliveryDays: number;
+        deliveryDaysVariance: number;
+        predictedWholesaleCostCents: number;
+        actualWholesaleCostCents: number;
+        costVarianceCents: number;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    eventId: string;
+    timestamp: string;
+    version: "1.0";
+    domain: "analytics";
+    eventName: "fulfillment.outcome.recorded";
+    correlationId: string;
+    payload: {
+        status: "SUCCESS" | "LATE" | "OVERCHARGED" | "CANCELLED";
+        orderId: string;
+        providerId: string;
+        recordedAt: string;
+        outcomeId: string;
+        decisionId: string;
+        predictedDeliveryDays: number;
+        actualDeliveryDays: number;
+        deliveryDaysVariance: number;
+        predictedWholesaleCostCents: number;
+        actualWholesaleCostCents: number;
+        costVarianceCents: number;
+    };
+}, {
+    eventId: string;
+    timestamp: string;
+    version: "1.0";
+    domain: "analytics";
+    eventName: "fulfillment.outcome.recorded";
+    correlationId: string;
+    payload: {
+        status: "SUCCESS" | "LATE" | "OVERCHARGED" | "CANCELLED";
+        orderId: string;
+        providerId: string;
+        recordedAt: string;
+        outcomeId: string;
+        decisionId: string;
+        predictedDeliveryDays: number;
+        actualDeliveryDays: number;
+        deliveryDaysVariance: number;
+        predictedWholesaleCostCents: number;
+        actualWholesaleCostCents: number;
+        costVarianceCents: number;
+    };
+}>;
+export type FulfillmentOutcomeRecordedEvent = z.infer<typeof FulfillmentOutcomeRecordedSchema>;
+export type FulfillmentOutcomeRecordedPayload = z.infer<typeof FulfillmentOutcomePayloadSchema>;
+export {};

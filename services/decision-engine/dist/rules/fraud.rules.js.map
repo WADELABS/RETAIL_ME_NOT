@@ -1,0 +1,1 @@
+{"version":3,"file":"fraud.rules.js","sourceRoot":"","sources":["../../rules/fraud.rules.ts"],"names":[],"mappings":";AAAA,gDAAgD;AAChD,6DAA6D;;;AAEhD,QAAA,UAAU,GAAG;IACxB;QACE,IAAI,EAAE,sBAAsB;QAC5B,SAAS,EAAE,CAAC,OAAO,EAAE,EAAE,CAAC,OAAO,CAAC,IAAI,CAAC,KAAK,GAAG,EAAE;QAC/C,WAAW,EAAE;YACX,QAAQ,EAAE,eAAe;YACzB,MAAM,EAAE,iBAAiB;YACzB,UAAU,EAAE,IAAI;SACjB;KACF;CACF,CAAC"}

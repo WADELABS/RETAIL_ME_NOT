@@ -104,6 +104,7 @@ export class SourcingAndPricingOptimizer {
         deliveryScore,
         inventoryConfidence,
         warrantyScore,
+        riskPenalty: 0,
       });
 
       return {

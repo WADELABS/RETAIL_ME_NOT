@@ -10,12 +10,14 @@ class InMemoryEventBus implements IEventBus {
     console.log(`[InMemoryEventBus] Publishing event: ${eventName}`, event);
     const handlers = this.subscribers.get(eventName) || [];
     
-    handlers.forEach(handler => {
-      // We don't await the handler to simulate the async, fire-and-forget nature of a real event bus
-      handler(event).catch(error => {
+    handlers.forEach(async handler => {
+      try {
+        // We don't await the publish to simulate the async, fire-and-forget nature of a real event bus
+        await handler(event);
+      } catch (error) {
         console.error(`[InMemoryEventBus] Error in handler for ${eventName}:`, error);
         // In a real implementation, this would trigger a dead-letter queue or retry logic.
-      });
+      }
     });
 
     return Promise.resolve();

@@ -3,7 +3,7 @@
 // a write-once object store like S3/GCS).
 
 // In a real implementation, this would use a proper database client.
-const auditLog = [];
+const auditLog: any[] = [];
 
 export async function storeDecision(decisionRecord) {
   console.log('[Audit Store] Persisting decision:', decisionRecord.decision);

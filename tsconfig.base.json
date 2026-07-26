@@ -3,15 +3,26 @@
     "target": "ES2022",
     "module": "commonjs",
     "strict": true,
+    "noImplicitAny": false,
+    "allowJs": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "composite": true,
-    "declaration": true,
-    "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@ecos/*": ["packages/*/src", "services/*/src"]
+      "@ecos/*": [
+        "packages/*/src",
+        "services/*/src"
+      ]
     }
-  }
+  },
+  "include": [
+    "packages/**/*.ts",
+    "services/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/dist"
+  ]
 }

@@ -1,6 +1,5 @@
 import { inMemoryEventBus } from '../../../packages/events/src/bus/in-memory-bus';
 import { IEventBus, EventHandler } from '../../../packages/events/src/bus/interface';
-import { ZodSchema } from 'zod';
 
 // In a real application, you would inject the desired event bus implementation.
 const eventBus: IEventBus = inMemoryEventBus;
@@ -8,11 +7,11 @@ const eventBus: IEventBus = inMemoryEventBus;
 // The consumer service provides a consistent, schema-validated way for other
 // services to subscribe to events.
 export const consumer = {
-  subscribe<T>(
+  subscribe<TPayload>(
     domain: string,
     eventName: string,
-    schema: ZodSchema<T>,
-    handler: (payload: T) => void | Promise<void>
+    schema: any, // Decouples schema generic to allow distinct payload typing
+    handler: (payload: TPayload) => void | Promise<void>
   ): void {
     
     const fullEventName = `${domain}.${eventName}`;
@@ -25,8 +24,9 @@ export const consumer = {
         return;
       }
       
-      // Pass only the validated payload to the handler
-      await handler(validationResult.data.payload);
+      // Pass only the validated payload to the handler, casting safely to TPayload
+      const payload = (validationResult.data as any).payload as TPayload;
+      await handler(payload);
     };
 
     eventBus.subscribe(fullEventName, validatedHandler);

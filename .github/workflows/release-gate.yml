@@ -124,6 +124,6 @@ jobs:
 
       - name: Compile Monorepo Services (TypeScript)
         run: |
-          echo "Compiling all ECOS packages and services..."
-          npx tsc --noEmit # Validates TS compilation across the entire workspace
+          echo "Compiling and type-checking all ECOS packages and services..."
+          npx tsc --noEmit -p tsconfig.base.json # Validates TS compilation across the entire workspace
           echo "All TypeScript compilation checks passed. Release artifact is ready for deployment."

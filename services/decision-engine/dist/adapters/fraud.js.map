@@ -1,0 +1,1 @@
+{"version":3,"file":"fraud.js","sourceRoot":"","sources":["../../adapters/fraud.ts"],"names":[],"mappings":";AAAA,yEAAyE;AACzE,8EAA8E;;AAE9E,0CAMC;AAND,SAAgB,eAAe,CAAC,KAAK;IACnC,OAAO;QACL,KAAK,EAAE,KAAK,CAAC,OAAO,CAAC,UAAU;QAC/B,cAAc,EAAE,KAAK,CAAC,OAAO,CAAC,cAAc;QAC5C,8BAA8B;KAC/B,CAAC;AACJ,CAAC"}
