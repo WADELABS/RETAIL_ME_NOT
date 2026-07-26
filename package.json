@@ -14,6 +14,7 @@
     "test:privacy": "node --import tsx --test services/telemetry-intelligence/tests/*.test.ts",
     "test:identity": "node --import tsx --test services/identity/tests/*.test.ts",
     "test:risk": "node --import tsx --test services/risk/tests/*.test.ts",
+    "test:rules": "node --import tsx --test services/decision-engine/tests/*.test.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {
