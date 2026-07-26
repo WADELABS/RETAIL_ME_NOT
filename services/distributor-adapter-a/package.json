@@ -1,0 +1,15 @@
+{
+  "name": "@ecos/distributor-adapter-a",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@ecos/fulfillment-provider-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
