@@ -1,0 +1,19 @@
+{
+  "name": "@ecos/tax-compliance",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "db:migrate": "knex migrate:latest"
+  },
+  "dependencies": {
+    "@ecos/events": "workspace:*",
+    "@ecos/event-gateway": "workspace:*",
+    "@ecos/tax-provider-contract": "workspace:*",
+    "knex": "^3.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
