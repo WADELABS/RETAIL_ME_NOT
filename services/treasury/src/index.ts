@@ -1,6 +1,6 @@
-import { consumer } from '@ecos/event-gateway/consumer';
-import { publisher } from '@ecos/event-gateway/publisher';
-import { TaxLiabilityRecordedEventSchema, TaxLiabilityRecordedPayload } from '@ecos/events';
+import { consumer } from '../../event-gateway/consumer/index';
+import { publisher } from '../../event-gateway/publisher/index';
+import { TaxLiabilityRecordedEventSchema, TaxLiabilityRecordedPayload } from '../../../packages/events/src/index';
 import { v4 as uuidv4 } from 'uuid';
 
 export function initialize() {

@@ -1,5 +1,5 @@
-import { inMemoryEventBus } from '@ecos/events/bus/in-memory-bus';
-import { EcosEvent, IEventBus } from '@ecos/events/bus/interface';
+import { inMemoryEventBus } from '../../../packages/events/src/bus/in-memory-bus';
+import { EcosEvent, IEventBus } from '../../../packages/events/src/bus/interface';
 import { v4 as uuidv4 } from 'uuid';
 
 // In a real application, you would inject the desired event bus implementation.

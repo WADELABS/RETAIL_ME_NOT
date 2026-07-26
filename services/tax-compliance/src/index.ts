@@ -1,7 +1,7 @@
-import { consumer } from '@ecos/event-gateway/consumer';
-import { publisher } from '@ecos/event-gateway/publisher';
-import { TaxProvider, TaxCalculationRequest } from '@ecos/tax-provider-contract';
-import { OrderPlacedEventSchema, OrderPlacedEventPayload } from '@ecos/events';
+import { consumer } from '../../event-gateway/consumer/index';
+import { publisher } from '../../event-gateway/publisher/index';
+import { TaxProvider, TaxCalculationRequest } from '../../../packages/tax-provider-contract/src/index';
+import { OrderPlacedEventSchema, OrderPlacedEventPayload } from '../../../packages/events/src/index';
 import { v4 as uuidv4 } from 'uuid';
 
 export class TaxComplianceService {

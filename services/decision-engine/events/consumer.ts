@@ -1,5 +1,5 @@
-import { consumer } from '@ecos/event-gateway/consumer';
-import { OrderPlacedEventPayload, OrderPlacedEventSchema } from '@ecos/events';
+import { consumer } from '../../event-gateway/consumer/index';
+import { OrderPlacedEventPayload, OrderPlacedEventSchema } from '../../../packages/events/src/index';
 import { resolveContext } from '../engine/resolver';
 import { evaluate } from '../engine/evaluator';
 import { storeDecision } from '../persistence/audit-store';

@@ -1,5 +1,5 @@
-import { consumer } from '@ecos/event-gateway/consumer';
-import { publisher } from '@ecos/event-gateway/publisher';
+import { consumer } from '../../event-gateway/consumer/index';
+import { publisher } from '../../event-gateway/publisher/index';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 
