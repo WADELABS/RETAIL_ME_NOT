@@ -12,7 +12,7 @@ const EventBaseSchema = z.object({
 });
 
 // Schema for an individual line item within an order
-const OrderLineItemSchema = z.object({
+export const OrderLineItemSchema = z.object({
   lineItemId: z.string().uuid(),
   sku: z.string(),
   productTitle: z.string(),
@@ -47,3 +47,24 @@ export const OrderPlacedEventSchema = EventBaseSchema.extend({
 // TypeScript types inferred from the Zod schemas
 export type OrderPlacedEvent = z.infer<typeof OrderPlacedEventSchema>;
 export type OrderPlacedEventPayload = z.infer<typeof OrderPlacedPayloadSchema>;
+
+
+// --- STATUS UPDATE EVENT SCHEMAS ---
+
+// Schema for the payload of the 'order.status.updated' event
+const OrderStatusUpdatedPayloadSchema = z.object({
+  orderId: z.string().uuid(),
+  fromStatus: z.string(),
+  toStatus: z.string(),
+  reason: z.string(),
+  timestamp: z.string().datetime(),
+});
+
+export const OrderStatusUpdatedEventSchema = EventBaseSchema.extend({
+  domain: z.literal('orders'),
+  eventName: z.literal('order.status.updated'),
+  payload: OrderStatusUpdatedPayloadSchema,
+});
+
+export type OrderStatusUpdatedEvent = z.infer<typeof OrderStatusUpdatedEventSchema>;
+export type OrderStatusUpdatedEventPayload = z.infer<typeof OrderStatusUpdatedPayloadSchema>;

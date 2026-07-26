@@ -16,6 +16,7 @@
     "test:risk": "node --import tsx --test services/risk/tests/*.test.ts",
     "test:rules": "node --import tsx --test services/decision-engine/tests/*.test.ts",
     "test:inventory": "node --import tsx --test services/inventory-availability/tests/*.test.ts",
+    "test:communication": "node --import tsx --test services/communication/tests/*.test.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {

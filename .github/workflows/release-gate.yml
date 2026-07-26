@@ -68,7 +68,10 @@ jobs:
           echo "13. Running Real-time Inventory Sync and Reordering tests..."
           npm run test:inventory
           
-          echo "14. Running platform-core legacy backend tests..."
+          echo "14. Running Transactional Email and Support Routing tests..."
+          npm run test:communication
+          
+          echo "15. Running platform-core legacy backend tests..."
           npm test --prefix platform-core/backend
           
           echo "=== VERIFICATION COMPLETE ===" >> release-test-execution.log
