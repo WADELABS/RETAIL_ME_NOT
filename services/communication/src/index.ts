@@ -27,6 +27,11 @@ export interface SupportTicket {
   status: 'OPEN' | 'PENDING_REPLY' | 'CLOSED';
   associatedOrderId?: string;
   associatedSerial?: string;
+  
+  // High-touch "Antidote to Amazon" human bypass fields
+  isEscapedToHuman: boolean;       // Set to true if customer requested a real person
+  assignedAgentId?: string;        // ID of the physical support representative
+  
   createdAt: string;
 }
 
@@ -35,7 +40,7 @@ export class CommunicationAndHelpDeskService {
   private emailLogs: EmailLog[] = [];
   private tickets: Map<string, SupportTicket> = new Map();
 
-  // Simulated warranty lookup table (reusing our serial number database concept)
+  // Simulated warranty lookup table
   private activeWarranties: Map<string, { model: string; expiresAt: number }> = new Map();
 
   public initialize(): void {
@@ -80,7 +85,7 @@ export class CommunicationAndHelpDeskService {
 
     const log: EmailLog = {
       emailId,
-      recipientEmail: 'customer@example.com', // In production, retrieved from profile
+      recipientEmail: 'customer@example.com',
       type: 'ORDER_CONFIRMATION',
       subject: `Thank you for your order! [#${order.orderId.substring(0, 8).toUpperCase()}]`,
       body: `Hi! We have successfully received your order of ${order.lineItems.length} items. Total: $${totalDollars}. We are preparing it for shipment.`,
@@ -102,7 +107,6 @@ export class CommunicationAndHelpDeskService {
     const emailId = `em_${uuidv4().substring(0, 8)}`;
     let log: EmailLog | undefined = undefined;
 
-    // A. Trigger Shipping Notification
     if (payload.toStatus === 'SHIPPED') {
       log = {
         emailId,
@@ -112,9 +116,7 @@ export class CommunicationAndHelpDeskService {
         body: `Great news! Your order has shipped via UPS. Tracking number: 1Z999AA1013456. Tracking link: https://ecos.ups.com/track/1Z999AA101345`,
         sentAt: new Date().toISOString(),
       };
-    } 
-    // B. Trigger Security Hold/Delay Notification
-    else if (payload.toStatus === 'ON_HOLD') {
+    } else if (payload.toStatus === 'ON_HOLD') {
       log = {
         emailId,
         recipientEmail: 'customer@example.com',
@@ -135,30 +137,51 @@ export class CommunicationAndHelpDeskService {
   }
 
   /**
-   * Funnels customer emails, site chats, and warranty requests into a single, unified Support Queue.
-   * Runs automated priority escalations and warranty validity checks.
+   * Funnels customer support requests into a single, unified queue.
+   * Includes automated priority escalations, warranty checks, and "Escape to Human" triggers.
    */
-  public ingestHelpTicket(ticketInput: Omit<SupportTicket, 'ticketId' | 'priority' | 'status' | 'createdAt'>): SupportTicket {
+  public ingestHelpTicket(ticketInput: Omit<SupportTicket, 'ticketId' | 'priority' | 'status' | 'isEscapedToHuman' | 'createdAt'>): SupportTicket {
     console.log(`[Help Desk] Ingesting customer support request via channel: ${ticketInput.channel}`);
 
     const ticketId = `TKT-${uuidv4().substring(0, 8).toUpperCase()}`;
     let priority: 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL' = 'NORMAL';
+    let isEscapedToHuman = false;
+    let assignedAgentId: string | undefined = undefined;
+
+    const keywordPayload = `${ticketInput.subject} ${ticketInput.body}`.toLowerCase();
 
     // --- SUPPORT CODES & RULES ENFORCEMENT ---
 
-    // Rule 1: Automated Priority Escalation
-    const keywordPayload = `${ticketInput.subject} ${ticketInput.body}`.toLowerCase();
-    
-    if (keywordPayload.includes('chargeback') || keywordPayload.includes('dispute') || keywordPayload.includes('lawyer')) {
-      priority = 'CRITICAL';
-      console.error(`  - [Escalation Trigger] CRITICAL keyword detected. Escalating Ticket ${ticketId} to CRITICAL priority.`);
-    } else if (keywordPayload.includes('broken') || keywordPayload.includes('refund') || keywordPayload.includes('defect') || keywordPayload.includes('scam')) {
-      priority = 'HIGH';
-      console.warn(`  - [Escalation Trigger] HIGH-risk keyword detected. Escalating Ticket ${ticketId} to HIGH priority.`);
+    // Rule 1: Automated "Escape to Human" Bypass Trigger
+    // IF the customer uses keywords like 'human', 'agent', 'person', 'operator', or 'representative'
+    if (
+      keywordPayload.includes('human') ||
+      keywordPayload.includes('agent') ||
+      keywordPayload.includes('person') ||
+      keywordPayload.includes('operator') ||
+      keywordPayload.includes('representative') ||
+      keywordPayload.includes('talk to someone')
+    ) {
+      isEscapedToHuman = true;
+      priority = 'HIGH'; // Elevate priority automatically
+      assignedAgentId = 'agent_hreed'; // Assign to active human representative
+
+      console.warn(`\n[Help Desk Bypass] 👤 ESCAPED TO HUMAN: Customer requested a real person. Disabling bots, assigning Ticket ${ticketId} to agent: ${assignedAgentId} (Priority: HIGH).`);
     }
 
-    // Rule 2: Automated Warranty Claims Verification
-    if (ticketInput.channel === 'WARRANTY' && ticketInput.associatedSerial) {
+    // Rule 2: Automated Priority Escalation (If not already escaped to human)
+    if (priority !== 'HIGH') {
+      if (keywordPayload.includes('chargeback') || keywordPayload.includes('dispute') || keywordPayload.includes('lawyer')) {
+        priority = 'CRITICAL';
+        console.error(`  - [Escalation Trigger] CRITICAL keyword detected. Escalating Ticket ${ticketId} to CRITICAL priority.`);
+      } else if (keywordPayload.includes('broken') || keywordPayload.includes('refund') || keywordPayload.includes('defect') || keywordPayload.includes('scam')) {
+        priority = 'HIGH';
+        console.warn(`  - [Escalation Trigger] HIGH-risk keyword detected. Escalating Ticket ${ticketId} to HIGH priority.`);
+      }
+    }
+
+    // Rule 3: Automated Warranty Claims Verification
+    if (ticketInput.channel === 'WARRANTY' && ticketInput.associatedSerial && !isEscapedToHuman) {
       console.log(`  - [Warranty Claim] Intercepted warranty request for device serial: ${ticketInput.associatedSerial}`);
       const warranty = this.activeWarranties.get(ticketInput.associatedSerial);
 
@@ -169,7 +192,7 @@ export class CommunicationAndHelpDeskService {
         priority = 'NORMAL';
         console.warn(`  - [Warranty Expired] Warranty for serial ${ticketInput.associatedSerial} expired on ${new Date(warranty.expiresAt).toLocaleDateString()}.`);
       } else {
-        priority = 'LOW'; // Verified valid warranty, easy routing
+        priority = 'LOW';
         console.log(`  - [Warranty Verified] VALID warranty for ${warranty.model}. Auto-assigned to low-friction technician queue.`);
       }
     }
@@ -181,11 +204,58 @@ export class CommunicationAndHelpDeskService {
       ticketId,
       priority,
       status: 'OPEN',
+      isEscapedToHuman,
+      assignedAgentId: assignedAgentId || ticketInput.assignedAgentId,
       createdAt: new Date().toISOString(),
     };
 
     this.tickets.set(ticketId, ticket);
-    console.log(`[Help Desk] SUCCESS: Created Ticket: ${ticketId}. Priority: ${priority}. Status: OPEN\n`);
+    console.log(`[Help Desk] SUCCESS: Created Ticket: ${ticketId}. Priority: ${priority}. Status: OPEN. Human: ${isEscapedToHuman}\n`);
+
+    // If escaped to human, publish an alert event so operators get instant push alerts
+    if (isEscapedToHuman) {
+      publisher.publish(
+        'returns', // support communications reside in reverse commerce limits
+        'support.ticket.escaped_to_human',
+        {
+          ticketId,
+          customerEmail: ticket.customerEmail,
+          subject: ticket.subject,
+          assignedAgentId,
+          escalatedAt: ticket.createdAt,
+        }
+      );
+    }
+
+    return ticket;
+  }
+
+  /**
+   * Manual Action: Programmatically bypass automation for an existing ticket on demand.
+   */
+  public async forceEscapeToHuman(ticketId: string, agentId: string = 'agent_hreed'): Promise<SupportTicket> {
+    const ticket = this.tickets.get(ticketId);
+    if (!ticket) {
+      throw new Error(`[Help Desk Error] Ticket ${ticketId} not found.`);
+    }
+
+    ticket.isEscapedToHuman = true;
+    ticket.priority = 'HIGH';
+    ticket.assignedAgentId = agentId;
+
+    console.warn(`[Help Desk Bypass] FORCE ESCAPE: Manually routed Ticket ${ticketId} to human agent: ${agentId}`);
+
+    await publisher.publish(
+      'returns',
+      'support.ticket.escaped_to_human',
+      {
+        ticketId,
+        customerEmail: ticket.customerEmail,
+        subject: ticket.subject,
+        assignedAgentId: agentId,
+        escalatedAt: new Date().toISOString(),
+      }
+    );
 
     return ticket;
   }

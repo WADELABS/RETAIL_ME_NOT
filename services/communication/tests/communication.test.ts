@@ -148,3 +148,47 @@ test('Help Desk automatically cross-references and verifies warranty claims', ()
   });
   assert.equal(fraudulentClaim.priority, 'HIGH', 'Invalid or forged serial warranty claims must be auto-escalated to HIGH priority for fraud auditing');
 });
+
+
+// --- "ANTIDOTE TO AMAZON" ESCAPE TO HUMAN BYPASS TESTS ---
+
+test('Help Desk "Escape to Human" trigger successfully bypasses chatbot and routes to physical representative', () => {
+  const service = new CommunicationAndHelpDeskService();
+
+  // Customer asks to talk to a human agent directly
+  const ticket = service.ingestHelpTicket({
+    channel: 'CHAT',
+    customerEmail: 'frustrated_buyer@example.com',
+    subject: 'Need help',
+    body: 'This chatbot is completely useless. Let me talk to a real human operator please.',
+  });
+
+  // Verify that ECOS programmatically bypassed automation and escalated the ticket
+  assert.equal(ticket.isEscapedToHuman, true, 'isEscapedToHuman flag must be set to true');
+  assert.equal(ticket.priority, 'HIGH', 'Escaped tickets must be auto-escalated to HIGH priority to meet customer SLAs');
+  assert.equal(ticket.assignedAgentId, 'agent_hreed', 'Ticket must be immediately assigned to a physical representative');
+});
+
+test('Help Desk allows administrators to manually force-escape a ticket to a real person on demand', async () => {
+  const service = new CommunicationAndHelpDeskService();
+
+  // 1. Ingest a standard, non-escaped email ticket
+  const ticket = service.ingestHelpTicket({
+    channel: 'EMAIL',
+    customerEmail: 'operator@wadelabs.com',
+    subject: 'Compatibility check',
+    body: 'Does this motherboard support PCIe Gen 5 nvme SSDs?',
+  });
+
+  assert.equal(ticket.isEscapedToHuman, false);
+  assert.equal(ticket.priority, 'NORMAL');
+  assert.equal(ticket.assignedAgentId, undefined);
+
+  // 2. An administrator manual force-escapes it from the dashboard
+  const updatedTicket = await service.forceEscapeToHuman(ticket.ticketId, 'agent_wade');
+
+  // Verify update
+  assert.equal(updatedTicket.isEscapedToHuman, true, 'isEscapedToHuman must be manually set');
+  assert.equal(updatedTicket.priority, 'HIGH', 'Priority must be elevated');
+  assert.equal(updatedTicket.assignedAgentId, 'agent_wade', 'Must assign the designated representative');
+});
