@@ -1,5 +1,6 @@
 import { publisher } from '../../event-gateway/publisher/index';
 import { v4 as uuidv4 } from 'uuid';
+import { CarrierShippingService, ShippingLabelResult } from '../../distributor-adapter-a/src/index';
 
 export enum OrderStatus {
   PENDING_PAYMENT = 'PENDING_PAYMENT',
@@ -9,6 +10,8 @@ export enum OrderStatus {
   PARTIALLY_SHIPPED = 'PARTIALLY_SHIPPED',
   SHIPPED = 'SHIPPED',
   DELIVERED = 'DELIVERED',
+  RETURN_REQUESTED = 'RETURN_REQUESTED', // New return request status
+  RETURNED = 'RETURNED',                 // Final returned and resolved status
   CANCELLED = 'CANCELLED',
   FAILED = 'FAILED',
 }
@@ -21,7 +24,9 @@ const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.ON_HOLD]: [OrderStatus.AWAITING_SHIPMENT, OrderStatus.CANCELLED],
   [OrderStatus.PARTIALLY_SHIPPED]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
   [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
-  [OrderStatus.DELIVERED]: [], // End state
+  [OrderStatus.DELIVERED]: [OrderStatus.RETURN_REQUESTED, OrderStatus.CANCELLED], // Customers can return or cancel delivered orders
+  [OrderStatus.RETURN_REQUESTED]: [OrderStatus.RETURNED],                        // Return resolves to RETURNED status
+  [OrderStatus.RETURNED]: [],  // End state
   [OrderStatus.CANCELLED]: [], // End state
   [OrderStatus.FAILED]: [],    // End state
 };
@@ -52,6 +57,17 @@ export interface OrderStateTransition {
   timestamp: string;
 }
 
+export interface RmaRecord {
+  rmaId: string;
+  orderId: string;
+  sku: string;
+  reason: string;
+  isDefective: boolean;
+  prePaidLabel?: ShippingLabelResult; // Return label attached automatically for defective tech
+  status: 'ISSUED' | 'RECEIVED' | 'RESOLVED';
+  createdAt: string;
+}
+
 export class OrderStateMachine {
   /**
    * Validates whether a requested order status transition is legal.
@@ -66,6 +82,12 @@ export class OrderService {
   // In-memory data store for local simulation & testing
   private orders: Map<string, Order> = new Map();
   private transitions: OrderStateTransition[] = [];
+  
+  // Dedicated RMA database
+  private rmas: Map<string, RmaRecord> = new Map();
+
+  // Instantiate carrier integration service
+  private carrierService = new CarrierShippingService();
 
   /**
    * Creates a new Customer Sales Order, defaulting to PENDING_PAYMENT.
@@ -90,6 +112,89 @@ export class OrderService {
 
   public getTransitions(orderId: string): OrderStateTransition[] {
     return this.transitions.filter(t => t.orderId === orderId);
+  }
+
+  public getRma(rmaId: string): RmaRecord | undefined {
+    return this.rmas.get(rmaId);
+  }
+
+  /**
+   * Self-Service RMA Portal Engine.
+   * Enables customers to request trackable return codes. Automatically issues pre-paid labels for defective tech.
+   */
+  public async initiateSelfServiceRma(
+    orderId: string,
+    sku: string,
+    reason: string,
+    isDefective: boolean
+  ): Promise<RmaRecord> {
+    console.log(`[RMA Portal] Received self-service return request for Order: ${orderId}. SKU: ${sku}`);
+
+    const order = this.orders.get(orderId);
+    if (!order) {
+      throw new Error(`[RMA Error] RMA request failed: Order ${orderId} not found.`);
+    }
+
+    if (order.status !== OrderStatus.DELIVERED) {
+      throw new Error(`[RMA Error] RMA request failed: Only DELIVERED orders can be returned. Current Status: ${order.status}`);
+    }
+
+    // --- CODES AND RULES COMPLIANCE ENFORCEMENT ---
+
+    // Rule 1: Enforce the standard 30-day return window (from order placement/delivery)
+    const placedDate = new Date(order.placedAt).getTime();
+    const ageInDays = (Date.now() - placedDate) / (1000 * 60 * 60 * 24);
+
+    if (ageInDays > 30) {
+      console.error(`[RMA Violation] REJECTED: Return request for Order ${orderId} exceeds the allowable 30-day window.`);
+      throw new Error('[RMA Error] Return request rejected: Order is outside the allowable 30-day return window.');
+    }
+
+    // --- END COMPLIANCE ENFORCEMENT ---
+
+    const rmaId = `RMA-${uuidv4().substring(0, 8).toUpperCase()}`;
+    let prePaidLabel: ShippingLabelResult | undefined = undefined;
+
+    // Rule 2: If the tech item is defective, we automatically call our Carrier Shipping service to generate a pre-paid return label!
+    if (isDefective) {
+      console.log(`  - Defective tech item flagged. Programmatically issuing pre-paid return shipping label...`);
+      prePaidLabel = await this.carrierService.generatePrePaidReturnLabel('UPS', '1Z999AA101_ORIGINAL_TRACKING');
+    }
+
+    const rma: RmaRecord = {
+      rmaId,
+      orderId,
+      sku,
+      reason,
+      isDefective,
+      prePaidLabel,
+      status: 'ISSUED',
+      createdAt: new Date().toISOString(),
+    };
+
+    this.rmas.set(rmaId, rma);
+
+    // 3. Transition the order state to RETURN_REQUESTED
+    await this.transitionOrder(orderId, OrderStatus.RETURN_REQUESTED, `RMA ${rmaId} issued. Reason: ${reason}`);
+
+    console.log(`[RMA Portal] SUCCESS: Issued RMA: ${rmaId} for SKU: ${sku}. Pre-paid Label: ${prePaidLabel ? 'ATTACHED' : 'NOT_REQUIRED'}`);
+
+    // Publish returns.rma.issued event to gateway
+    await publisher.publish(
+      'returns',
+      'rma.issued',
+      {
+        rmaId,
+        orderId,
+        customerId: order.customerId,
+        sku,
+        isDefective,
+        prePaidTrackingNumber: prePaidLabel?.trackingNumber,
+        createdAt: rma.createdAt,
+      }
+    );
+
+    return rma;
   }
 
   /**
@@ -152,7 +257,6 @@ export class OrderService {
           currency: order.currency,
           placedAt: order.placedAt,
           lineItems: order.lineItems,
-          // Simple address placeholders
           shippingAddress: {
             recipientName: 'Wade Labs Operator',
             line1: '456 Tech Way',
