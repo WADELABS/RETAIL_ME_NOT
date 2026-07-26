@@ -6,6 +6,7 @@
     "test:contracts": "node --import tsx --test tests/contracts/*.test.ts",
     "test:simulation": "node --import tsx --test tests/e2e-order-simulation.test.ts",
     "test:ingestion": "node --import tsx --test services/catalog-ingestion/tests/*.test.ts",
+    "test:optimization": "node --import tsx --test services/pricing-engine/tests/*.test.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {
