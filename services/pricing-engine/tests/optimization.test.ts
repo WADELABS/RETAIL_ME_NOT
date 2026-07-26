@@ -25,9 +25,6 @@ test('Optimizer calculates exact cost-aware minimum selling price', () => {
     inventoryQuantity: 100,
   };
 
-  // Base Cost = $800 + $5 + $15 + $0.30 + $75 = $895.30
-  // Variable Rates = 2% (fraud) + 5% (return) + 3% (warranty) + 2.9% (stripe) = 12.9%
-  // Price = $895.30 / (1 - 0.129) = $895.30 / 0.871 = 102789.89 -> ceil(102790)
   const price = optimizer.calculateMinimumViablePrice('LAPTOP-WADE-01', option, testPolicy);
   assert.equal(price, 102790);
 });
@@ -39,29 +36,82 @@ test('Optimizer correctly prioritizes higher reliability over lower cost', () =>
     {
       providerId: 'CHEAP_BUT_UNRELIABLE_DISTRIBUTOR',
       providerType: 'DISTRIBUTOR',
-      wholesaleCostCents: 78000,  // $780 (Cheaper)
+      wholesaleCostCents: 78000,
       dropshipFeeCents: 500,
       shippingCostCents: 1500,
-      averageShipDays: 10,        // Slow (10 days)
-      providerReliabilityScore: 0.75, // Low reliability (75%)
+      averageShipDays: 10,
+      providerReliabilityScore: 0.75,
       inventoryQuantity: 20,
     },
     {
       providerId: 'EXPENSIVE_BUT_RELIABLE_DISTRIBUTOR',
       providerType: 'DISTRIBUTOR',
-      wholesaleCostCents: 80000,  // $800 (More expensive)
+      wholesaleCostCents: 80000,
       dropshipFeeCents: 500,
       shippingCostCents: 1500,
-      averageShipDays: 2,         // Fast (2 days)
-      providerReliabilityScore: 0.99, // High reliability (99%)
-      inventoryQuantity: 100,     // Deep stock
+      averageShipDays: 2,
+      providerReliabilityScore: 0.99,
+      inventoryQuantity: 100,
     }
   ];
 
   const result = optimizer.optimize('LAPTOP-WADE-01', options, testPolicy);
+  assert.equal(result.selectedProviderId, 'EXPENSIVE_BUT_RELIABLE_DISTRIBUTOR');
+  assert.ok(result.optimizationScore > 0.85);
+});
 
-  // The engine should select the reliable distributor despite the higher cost,
-  // because reliability and speed are weighted heavily to guarantee fulfillment success.
-  assert.equal(result.selectedProviderId, 'EXPENSIVE_BUT_RELIABLE_DISTRIBUTOR', 'Should choose the reliable provider');
-  assert.ok(result.optimizationScore > 0.85, `Expected high optimization score, got: ${result.optimizationScore}`);
+// --- CRITIQUE 5: STRICT BOUNDARY & EDGE-CASE MATHEMATICAL TESTS ---
+
+test('Pricing Engine protects against division-by-zero on 100% combined variable fees', () => {
+  const optimizer = new SourcingAndPricingOptimizer();
+  const option: SourcingOption = {
+    providerId: 'DISTRIBUTOR_A',
+    providerType: 'DISTRIBUTOR',
+    wholesaleCostCents: 10000,
+    dropshipFeeCents: 0,
+    shippingCostCents: 0,
+    averageShipDays: 1,
+    providerReliabilityScore: 0.99,
+    inventoryQuantity: 100,
+  };
+
+  // Construct an extreme, invalid policy where variable fees equal or exceed 100% (10,000 bps)
+  const brokenPolicy: PricingPolicy = {
+    ...testPolicy,
+    fraudReserveBps: 5000,  // 50%
+    returnReserveBps: 5000, // 50% (Total: 100% variable rate!)
+  };
+
+  // The engine must actively block the calculation and throw a RangeError rather than dividing by zero or infinite pricing
+  assert.throws(
+    () => {
+      optimizer.calculateMinimumViablePrice('LAPTOP-WADE-01', option, brokenPolicy);
+    },
+    RangeError,
+    'Combined variable rates of 100% or more must fail-safe and throw a RangeError'
+  );
+});
+
+test('Pricing Engine handles zero cost products correctly (e.g., free promotional items)', () => {
+  const optimizer = new SourcingAndPricingOptimizer();
+  
+  // Sourcing option with zero wholesale, dropship, or shipping costs
+  const freeOption: SourcingOption = {
+    providerId: 'FREE_PROMO_NODE',
+    providerType: 'OWN_WAREHOUSE',
+    wholesaleCostCents: 0,
+    dropshipFeeCents: 0,
+    shippingCostCents: 0,
+    averageShipDays: 1,
+    providerReliabilityScore: 1.0,
+    inventoryQuantity: 10,
+  };
+
+  // Under a standard policy, a $0 product must still be priced high enough to cover flat fees and minimum profit
+  const price = optimizer.calculateMinimumViablePrice('PROMO-STICKER-01', freeOption, testPolicy);
+  
+  // Base Cost = $0 + $0 + $0 + $0.30 + $75.00 = $75.30
+  // Variable Rates = 12.9%
+  // Price = $75.30 / 0.871 = 8645.2 -> 8646 ($86.46)
+  assert.equal(price, 8646, 'A free cost item must still be priced correctly to cover minimum contribution and fees');
 });
