@@ -2,10 +2,15 @@
   "name": "ecos-monorepo",
   "private": true,
   "scripts": {
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "lint": "eslint . --ext .ts"
   },
   "devDependencies": {
+    "eslint": "^8.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
     "jest": "^30.4.2",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "typescript": "^5.0.0"
   }
 }

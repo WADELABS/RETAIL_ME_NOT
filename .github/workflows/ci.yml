@@ -28,8 +28,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Run linter (placeholder)
-        run: echo "Linter step placeholder. To be implemented."
+      - name: Run linter
+        run: pnpm lint
 
       - name: Run tests
         run: pnpm -r test
