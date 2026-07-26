@@ -68,9 +68,14 @@ jobs:
           echo "--- RUNNING STAGE 7: Real-time Telemetry Surge Pricing tests ---" >> ecos-test-execution.log
           npm run test:telemetry 2>&1 | tee -a ecos-test-execution.log
 
-      - name: 8. Run platform-core legacy backend tests
+      - name: 8. Run Real-time Billing Telemetry tests
         run: |
-          echo "--- RUNNING STAGE 8: platform-core legacy backend tests ---" >> ecos-test-execution.log
+          echo "--- RUNNING STAGE 8: Real-time Billing Telemetry tests ---" >> ecos-test-execution.log
+          npm run test:billing 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 9. Run platform-core legacy backend tests
+        run: |
+          echo "--- RUNNING STAGE 9: platform-core legacy backend tests ---" >> ecos-test-execution.log
           npm test --prefix platform-core/backend 2>&1 | tee -a ecos-test-execution.log
 
       - name: Finalize Audit Log

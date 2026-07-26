@@ -10,6 +10,7 @@
     "test:learning": "node --import tsx --test tests/e2e-learning-simulation.test.ts",
     "test:telemetry": "node --import tsx --test tests/e2e-telemetry-surge-pricing.test.ts",
     "test:orders": "node --import tsx --test services/orders/tests/*.test.ts",
+    "test:billing": "node --import tsx --test tests/e2e-billing-telemetry.test.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {

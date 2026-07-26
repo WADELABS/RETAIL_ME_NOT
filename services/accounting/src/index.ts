@@ -6,6 +6,8 @@ import {
   PurchaseOrderCreatedPayload,
   TaxLiabilityRecordedEventSchema,
   TaxLiabilityRecordedPayload,
+  DailyCloudCostAccruedEventSchema,
+  DailyCloudCostAccruedPayload,
 } from '../../../packages/events/src/index';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -53,6 +55,16 @@ export class AccountingService {
       TaxLiabilityRecordedEventSchema,
       async (payload: TaxLiabilityRecordedPayload) => {
         await this.ledgerTaxReserveTransfer(payload);
+      }
+    );
+
+    // 4. Consume Daily Cloud Cost Accrued (Auto-Deduct Infrastructure Expense)
+    consumer.subscribe(
+      'telemetry',
+      'billing.cost.accrued',
+      DailyCloudCostAccruedEventSchema,
+      async (payload: DailyCloudCostAccruedPayload) => {
+        await this.ledgerCloudInfrastructureExpense(payload);
       }
     );
   }
@@ -133,6 +145,23 @@ export class AccountingService {
       lines: [
         { accountNumber: '1020', entryType: 'DEBIT', amountCents: tax.totalTaxCents },
         { accountNumber: '1010', entryType: 'CREDIT', amountCents: tax.totalTaxCents },
+      ]
+    });
+  }
+
+  private async ledgerCloudInfrastructureExpense(billing: DailyCloudCostAccruedPayload): Promise<void> {
+    console.log(`[Accounting Service] Ledgering Cloud Infrastructure Expense for period: ${billing.billingPeriod}`);
+
+    // Automated Infrastructure Expense Deduction:
+    // DEBIT: Cloud Infrastructure Expense (5020) - increases operational expenses
+    // CREDIT: Operating Cash (1010) - decreases our spendable cash asset
+    await this.postJournalEntry({
+      referenceType: 'TAX_RESERVE_TRANSFER', // Reuses standard logical/cash transfer categories
+      referenceId: uuidv4(), // Generate transactional UUID for ledger tracing
+      description: `Auto-deduction of daily accrued cloud infrastructure costs for period: ${billing.billingPeriod}`,
+      lines: [
+        { accountNumber: '5020', entryType: 'DEBIT', amountCents: billing.costCents },
+        { accountNumber: '1010', entryType: 'CREDIT', amountCents: billing.costCents },
       ]
     });
   }
