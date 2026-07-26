@@ -65,7 +65,10 @@ jobs:
           echo "12. Running Decision Engine Policy and Rules tests..."
           npm run test:rules
           
-          echo "13. Running platform-core legacy backend tests..."
+          echo "13. Running Real-time Inventory Sync and Reordering tests..."
+          npm run test:inventory
+          
+          echo "14. Running platform-core legacy backend tests..."
           npm test --prefix platform-core/backend
           
           echo "=== VERIFICATION COMPLETE ===" >> release-test-execution.log

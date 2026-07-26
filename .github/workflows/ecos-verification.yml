@@ -93,9 +93,14 @@ jobs:
           echo "--- RUNNING STAGE 12: Decision Engine Policy and Rules tests ---" >> ecos-test-execution.log
           npm run test:rules 2>&1 | tee -a ecos-test-execution.log
 
-      - name: 13. Run platform-core legacy backend tests
+      - name: 13. Run Real-time Inventory Sync and Reordering tests
         run: |
-          echo "--- RUNNING STAGE 13: platform-core legacy backend tests ---" >> ecos-test-execution.log
+          echo "--- RUNNING STAGE 13: Real-time Inventory Sync and Reordering tests ---" >> ecos-test-execution.log
+          npm run test:inventory 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 14. Run platform-core legacy backend tests
+        run: |
+          echo "--- RUNNING STAGE 14: platform-core legacy backend tests ---" >> ecos-test-execution.log
           npm test --prefix platform-core/backend 2>&1 | tee -a ecos-test-execution.log
 
       - name: Finalize Audit Log
