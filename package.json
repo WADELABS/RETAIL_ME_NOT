@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "test": "pnpm -r test",
+    "test:contracts": "node --test tests/contracts/**/*.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {

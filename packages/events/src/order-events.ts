@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AddressSchema } from './common/address';
 
 // Base schema for all events to ensure consistency
 const EventBaseSchema = z.object({
@@ -30,8 +31,8 @@ const OrderPlacedPayloadSchema = z.object({
   shippingCents: z.number().int(),
   discountCents: z.number().int(),
   currency: z.string().length(3),
-  shippingAddress: z.object({}), // Placeholder for address schema
-  billingAddress: z.object({}),  // Placeholder for address schema
+  shippingAddress: AddressSchema,
+  billingAddress: AddressSchema,
   placedAt: z.string().datetime(),
   lineItems: z.array(OrderLineItemSchema),
 });
@@ -43,5 +44,6 @@ export const OrderPlacedEventSchema = EventBaseSchema.extend({
   payload: OrderPlacedPayloadSchema,
 });
 
-// TypeScript type inferred from the Zod schema
+// TypeScript types inferred from the Zod schemas
 export type OrderPlacedEvent = z.infer<typeof OrderPlacedEventSchema>;
+export type OrderPlacedEventPayload = z.infer<typeof OrderPlacedPayloadSchema>;

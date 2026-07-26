@@ -1,20 +1,39 @@
-import { OrderPlacedEvent, OrderPlacedEventSchema } from '@ecos/events';
+import { consumer } from '@ecos/event-gateway/consumer';
+import { OrderPlacedEventPayload, OrderPlacedEventSchema } from '@ecos/events';
+import { resolveContext } from '../engine/resolver';
+import { evaluate } from '../engine/evaluator';
+import { storeDecision } from '../persistence/audit-store';
+import { fraudRules } from '../rules/fraud.rules';
 
-// This file would contain the logic for consuming events from the event bus.
-// A real implementation would use a client from a library like Kafkajs or Google Pub/Sub.
+// The consumer subscribes to events it cares about through the central gateway.
+// The gateway handles the underlying bus implementation and schema validation.
+consumer.subscribe(
+  'orders',
+  'order.placed',
+  OrderPlacedEventSchema,
+  async (payload: OrderPlacedEventPayload) => {
+    console.log(`[Decision Engine] Processing order.placed event for order: ${payload.orderId}`);
 
-function handleOrderPlaced(event: OrderPlacedEvent) {
-  // Validate the event payload at runtime to ensure data integrity
-  const validationResult = OrderPlacedEventSchema.safeParse(event);
-  if (!validationResult.success) {
-    console.error('[Decision Engine] Invalid OrderPlacedEvent received:', validationResult.error);
-    return;
+    // 1. Resolve context from this and other related events (in a real scenario)
+    const context = await resolveContext([{ type: 'order.placed', payload }]);
+
+    // 2. Evaluate rules against the context
+    // For now, we'll just run fraud rules as an example
+    const decision = evaluate(context, fraudRules);
+    
+    // 3. Persist the decision to the audit log
+    await storeDecision({
+      decision: decision.decision,
+      reason: decision.reason,
+      confidence: decision.confidence,
+      inputs: { orderId: payload.orderId }, // snapshot of inputs
+    });
+
+    // 4. Publish a new event with the decision (e.g., decision.completed)
+    // publisher.publish('decision_engine', 'decision.completed', ...);
   }
+);
 
-  console.log(`[Decision Engine] Received OrderPlacedEvent for order: ${validationResult.data.payload.orderId}`);
-  // In a real system, this would trigger the resolver, evaluator, and audit logger.
-}
+console.log('[Decision Engine] Consumer initialized and subscribed to events.');
 
-// Example of how the consumer might be set up:
-// eventBus.subscribe('orders.placed', handleOrderPlaced);
 

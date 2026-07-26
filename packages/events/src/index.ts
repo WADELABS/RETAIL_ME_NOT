@@ -2,6 +2,7 @@
 // It exports all event schemas and types, making them available to other
 // services in the monorepo.
 
+export * from './common/address';
 export * from './order-events';
 // export * from './pricing-events';
 // export * from './risk-events';
