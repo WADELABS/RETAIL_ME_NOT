@@ -14,7 +14,7 @@ const EventBaseSchema = z.object({
 const TaxLineSchema = z.object({
   state: z.string().length(2), // e.g., 'LA'
   jurisdictionName: z.string(), // e.g., 'East Baton Rouge Parish'
-  taxType: z.literal('STATE') || z.literal('LOCAL') || z.literal('SPECIAL'),
+  taxType: z.enum(['STATE', 'LOCAL', 'SPECIAL']),
   rateBps: z.number().int().positive(), // Rate in basis points (e.g., 945 for 9.45%)
   amountCents: z.number().int().positive(),
 });
@@ -45,7 +45,7 @@ const TaxLiabilityRecordedPayloadSchema = z.object({
   orderId: z.string().uuid(),
   transactionId: z.string().uuid(), // ID linking to our internal tax_transactions ledger table
   totalTaxCents: z.number().int().positive(),
-  reserveAccountAction: z.literal('TRANSFER_PENDING') || z.literal('TRANSFERRED'),
+  reserveAccountAction: z.enum(['TRANSFER_PENDING', 'TRANSFERRED']),
   recordedAt: z.string().datetime(),
 });
 

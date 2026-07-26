@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OrderPlacedEventSchema } from '@ecos/events';
+import { OrderPlacedEventSchema } from '../../packages/events/src/index';
 import { v4 as uuidv4 } from 'uuid';
 
 test('OrderPlacedEvent contract is valid', () => {

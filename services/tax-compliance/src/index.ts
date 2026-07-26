@@ -39,7 +39,7 @@ export class TaxComplianceService {
       'tax.calculated',
       {
         orderId: request.orderId,
-        shippingState: request.shippingAddress.country,
+        shippingState: request.shippingAddress.state,
         subtotalCents: request.subtotalCents,
         totalTaxCents: result.totalTaxCents,
         taxLines: result.taxLines.map(line => ({
