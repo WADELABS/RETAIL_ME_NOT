@@ -9,6 +9,7 @@ export * from './tax-events';
 export * from './outcome-events';
 export * from './telemetry-events';
 export * from './billing-events';
+export * from './identity-events';
 // export * from './pricing-events';
 // export * from './risk-events';
 // ... and so on for all other domain events
