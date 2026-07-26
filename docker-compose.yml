@@ -1,0 +1,111 @@
+version: '3.8'
+
+# ECOS Platform Production-Ready Staging/Deployment Compose Stack
+# Description: Lightweight, low-cost deployment model designed to run ECOS on a single DigitalOcean Droplet.
+
+services:
+  # 1. State Persistence Layer: PostgreSQL 16
+  ecos-postgres:
+    image: postgres:16-alpine
+    container_name: ecos-postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ecos_production
+      POSTGRES_USER: ecos_admin
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-ecos_secure_pass_123}
+    volumes:
+      - ecos-db-data:/var/lib/postgresql/data
+    networks:
+      - ecos-network
+
+  # 2. Caching Layer: Redis 7
+  ecos-redis:
+    image: redis:7-alpine
+    container_name: ecos-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-ecos_redis_pass_123}
+    volumes:
+      - ecos-redis-data:/data
+    networks:
+      - ecos-network
+
+  # 3. Core ECOS Services (Workspace Builds)
+  
+  # A. ECOS Event Gateway
+  ecos-event-gateway:
+    build:
+      context: .
+      dockerfile: services/event-gateway/Dockerfile
+    container_name: ecos-event-gateway
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-ecos_redis_pass_123}@ecos-redis:6379
+    depends_on:
+      - ecos-redis
+    networks:
+      - ecos-network
+
+  # B. ECOS Decision Engine
+  ecos-decision-engine:
+    build:
+      context: .
+      dockerfile: services/decision-engine/Dockerfile
+    container_name: ecos-decision-engine
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-ecos_redis_pass_123}@ecos-redis:6379
+    depends_on:
+      - ecos-redis
+      - ecos-event-gateway
+    networks:
+      - ecos-network
+
+  # C. ECOS General Ledger (Accounting)
+  ecos-accounting:
+    build:
+      context: .
+      dockerfile: services/accounting/Dockerfile
+    container_name: ecos-accounting
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://ecos_admin:${DATABASE_PASSWORD:-ecos_secure_pass_123}@ecos-postgres:5432/ecos_production
+    depends_on:
+      - ecos-postgres
+      - ecos-event-gateway
+    networks:
+      - ecos-network
+
+  # D. ECOS Procurement Service
+  ecos-procurement:
+    build:
+      context: .
+      dockerfile: services/procurement/Dockerfile
+    container_name: ecos-procurement
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://ecos_admin:${DATABASE_PASSWORD:-ecos_secure_pass_123}@ecos-postgres:5432/ecos_production
+    depends_on:
+      - ecos-postgres
+      - ecos-event-gateway
+    networks:
+      - ecos-network
+
+volumes:
+  ecos-db-data:
+    driver: local
+  ecos-redis-data:
+    driver: local
+
+networks:
+  ecos-network:
+    driver: bridge
