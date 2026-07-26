@@ -1,0 +1,47 @@
+import { z } from 'zod';
+
+// Base schema for all events to ensure consistency
+const EventBaseSchema = z.object({
+  eventId: z.string().uuid(),
+  timestamp: z.string().datetime(),
+  version: z.literal('1.0'),
+  domain: z.string(),
+  eventName: z.string(),
+  correlationId: z.string().uuid(),
+});
+
+// Schema for an individual line item within an order
+const OrderLineItemSchema = z.object({
+  lineItemId: z.string().uuid(),
+  sku: z.string(),
+  productTitle: z.string(),
+  quantity: z.number().int().positive(),
+  unitPriceCents: z.number().int().positive(),
+  totalPriceCents: z.number().int().positive(),
+});
+
+// Schema for the payload of the 'order.placed' event
+const OrderPlacedPayloadSchema = z.object({
+  orderId: z.string().uuid(),
+  customerId: z.string().uuid(),
+  status: z.literal('PENDING_FULFILLMENT'),
+  totalPriceCents: z.number().int().positive(),
+  taxCents: z.number().int(),
+  shippingCents: z.number().int(),
+  discountCents: z.number().int(),
+  currency: z.string().length(3),
+  shippingAddress: z.object({}), // Placeholder for address schema
+  billingAddress: z.object({}),  // Placeholder for address schema
+  placedAt: z.string().datetime(),
+  lineItems: z.array(OrderLineItemSchema),
+});
+
+// The full schema for the 'order.placed' event
+export const OrderPlacedEventSchema = EventBaseSchema.extend({
+  domain: z.literal('orders'),
+  eventName: z.literal('order.placed'),
+  payload: OrderPlacedPayloadSchema,
+});
+
+// TypeScript type inferred from the Zod schema
+export type OrderPlacedEvent = z.infer<typeof OrderPlacedEventSchema>;
