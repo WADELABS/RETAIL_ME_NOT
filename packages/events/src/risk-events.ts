@@ -16,6 +16,7 @@ const ReturnInspectionPayloadSchema = z.object({
   orderId: z.string().uuid(),
   customerId: z.string().uuid(),
   sku: z.string(),
+  serialNumber: z.string().min(1), // Mandatory serial number tracking for return fraud prevention
   // The crucial ECOS return grading, including WRONG_ITEM for fraud blacklisting
   grade: z.enum(['SEALED', 'OPEN_BOX', 'USED', 'REFURBISHED', 'WRONG_ITEM', 'DAMAGED']),
   notes: z.string(),
