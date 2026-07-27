@@ -103,9 +103,14 @@ jobs:
           echo "--- RUNNING STAGE 14: Transactional Email and Support Routing tests ---" >> ecos-test-execution.log
           npm run test:communication 2>&1 | tee -a ecos-test-execution.log
 
-      - name: 15. Run platform-core legacy backend tests
+      - name: 15. Run Double-entry General Ledger Mapping and Auditing tests
         run: |
-          echo "--- RUNNING STAGE 15: platform-core legacy backend tests ---" >> ecos-test-execution.log
+          echo "--- RUNNING STAGE 15: Double-entry General Ledger Mapping and Auditing tests ---" >> ecos-test-execution.log
+          npm run test:accounting 2>&1 | tee -a ecos-test-execution.log
+
+      - name: 16. Run platform-core legacy backend tests
+        run: |
+          echo "--- RUNNING STAGE 16: platform-core legacy backend tests ---" >> ecos-test-execution.log
           npm test --prefix platform-core/backend 2>&1 | tee -a ecos-test-execution.log
 
       - name: Finalize Audit Log

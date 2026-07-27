@@ -71,7 +71,10 @@ jobs:
           echo "14. Running Transactional Email and Support Routing tests..."
           npm run test:communication
           
-          echo "15. Running platform-core legacy backend tests..."
+          echo "15. Running Double-entry General Ledger Mapping and Auditing tests..."
+          npm run test:accounting
+          
+          echo "16. Running platform-core legacy backend tests..."
           npm test --prefix platform-core/backend
           
           echo "=== VERIFICATION COMPLETE ===" >> release-test-execution.log

@@ -60,8 +60,6 @@ test('Optimizer correctly prioritizes higher reliability over lower cost', () =>
   assert.ok(result.optimizationScore > 0.85);
 });
 
-// --- CRITIQUE 5: STRICT BOUNDARY & EDGE-CASE MATHEMATICAL TESTS ---
-
 test('Pricing Engine protects against division-by-zero on 100% combined variable fees', () => {
   const optimizer = new SourcingAndPricingOptimizer();
   const option: SourcingOption = {
@@ -75,14 +73,12 @@ test('Pricing Engine protects against division-by-zero on 100% combined variable
     inventoryQuantity: 100,
   };
 
-  // Construct an extreme, invalid policy where variable fees equal or exceed 100% (10,000 bps)
   const brokenPolicy: PricingPolicy = {
     ...testPolicy,
-    fraudReserveBps: 5000,  // 50%
-    returnReserveBps: 5000, // 50% (Total: 100% variable rate!)
+    fraudReserveBps: 5000,
+    returnReserveBps: 5000,
   };
 
-  // The engine must actively block the calculation and throw a RangeError rather than dividing by zero or infinite pricing
   assert.throws(
     () => {
       optimizer.calculateMinimumViablePrice('LAPTOP-WADE-01', option, brokenPolicy);
@@ -95,7 +91,6 @@ test('Pricing Engine protects against division-by-zero on 100% combined variable
 test('Pricing Engine handles zero cost products correctly (e.g., free promotional items)', () => {
   const optimizer = new SourcingAndPricingOptimizer();
   
-  // Sourcing option with zero wholesale, dropship, or shipping costs
   const freeOption: SourcingOption = {
     providerId: 'FREE_PROMO_NODE',
     providerType: 'OWN_WAREHOUSE',
@@ -107,11 +102,43 @@ test('Pricing Engine handles zero cost products correctly (e.g., free promotiona
     inventoryQuantity: 10,
   };
 
-  // Under a standard policy, a $0 product must still be priced high enough to cover flat fees and minimum profit
   const price = optimizer.calculateMinimumViablePrice('PROMO-STICKER-01', freeOption, testPolicy);
-  
-  // Base Cost = $0 + $0 + $0 + $0.30 + $75.00 = $75.30
-  // Variable Rates = 12.9%
-  // Price = $75.30 / 0.871 = 8645.2 -> 8646 ($86.46)
-  assert.equal(price, 8646, 'A free cost item must still be priced correctly to cover minimum contribution and fees');
+  assert.equal(price, 8646);
+});
+
+
+// --- NEW ADVANCED GATEWAY FEE CALCULATION TESTS ---
+
+test('FEE CALCULATION HOOKS: Pricing Engine accurately calculates expected net profit and margin including Stripe gateway fees', () => {
+  const optimizer = new SourcingAndPricingOptimizer();
+
+  const option: SourcingOption = {
+    providerId: 'DISTRIBUTOR_A',
+    providerType: 'DISTRIBUTOR',
+    wholesaleCostCents: 95000, // $950
+    dropshipFeeCents: 0,
+    shippingCostCents: 1500,   // $15
+    averageShipDays: 2,
+    providerReliabilityScore: 0.99,
+    inventoryQuantity: 50,
+  };
+
+  const proposedPriceCents = 129900; // $1,299.00
+
+  const metrics = optimizer.calculateExpectedNetProfit('LAPTOP-WADE-01', proposedPriceCents, option, testPolicy);
+
+  // 1. Verify Stripe Fee: 2.9% of $1,299 + $0.30 = $37.67 + $0.30 = $37.97 (3797 cents)
+  assert.equal(metrics.stripeFeeCents, 3797, 'Stripe gateway fees must be accurately calculated');
+
+  // 2. Verify Supplier COGS: $950 + $15 = $965 (96500 cents)
+  assert.equal(metrics.wholesaleCOGS, 96500);
+
+  // 3. Verify Reserves: 10% (2% fraud + 5% return + 3% warranty) of $1,299 = $129.90 (12990 cents)
+  assert.equal(metrics.allocatedReservesCents, 12990);
+
+  // 4. Verify Net Profit: $1,299 - $37.97 - $965 - $129.90 = $166.13 (16613 cents)
+  assert.equal(metrics.netProfitCents, 16613, 'Net profit cents must be calculated with 100% precision');
+
+  // 5. Verify Net Margin: 166.13 / 1299 = 12.789%
+  assert.ok(metrics.netMarginPercentage > 12.78 && metrics.netMarginPercentage < 12.80);
 });

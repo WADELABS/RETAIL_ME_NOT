@@ -33,6 +33,15 @@ export interface OptimizationRecommendation {
   optimizationScore: number;
 }
 
+export interface NetProfitMetrics {
+  sellingPriceCents: number;
+  stripeFeeCents: number;
+  wholesaleCOGS: number;
+  allocatedReservesCents: number;
+  netProfitCents: number;
+  netMarginPercentage: number;
+}
+
 export class SourcingAndPricingOptimizer {
   // Store active demand surcharges to apply real-time dynamic pricing
   private activeSurcharges: Map<string, number> = new Map();
@@ -79,6 +88,50 @@ export class SourcingAndPricingOptimizer {
   }
 
   /**
+   * FEE CALCULATION HOOKS: Calculates the exact, real-world expected net profit and margin
+   * for a proposed retail selling price, factoring in Stripe's gateway processing fees and distributor costs.
+   */
+  public calculateExpectedNetProfit(
+    sku: string,
+    proposedPriceCents: number,
+    option: SourcingOption,
+    policy: PricingPolicy
+  ): NetProfitMetrics {
+    console.log(`[Pricing Engine] Calculating net profits for SKU: ${sku} at proposed price: $${(proposedPriceCents / 100).toFixed(2)}`);
+
+    // 1. Calculate Stripe Processing Fee (2.9% + $0.30)
+    const stripeFeeCents = Math.round((proposedPriceCents * policy.processingFeeBps) / 10000) + policy.processingFlatFeeCents;
+
+    // 2. Calculate Distributor COGS (Wholesale + Dropship + Shipping)
+    const wholesaleCOGS = option.wholesaleCostCents + option.dropshipFeeCents + option.shippingCostCents;
+
+    // 3. Calculate Operational Reserves (Fraud, Return, Warranty)
+    const demandSurchargeBps = this.activeSurcharges.get(sku) || 0;
+    const totalReserveBps = policy.fraudReserveBps + policy.returnReserveBps + policy.warrantyReserveBps + demandSurchargeBps;
+    const allocatedReservesCents = Math.round((proposedPriceCents * totalReserveBps) / 10000);
+
+    // 4. Calculate Net Profit (Selling Price - Stripe Fees - Distributor COGS - Reserves)
+    const netProfitCents = proposedPriceCents - stripeFeeCents - wholesaleCOGS - allocatedReservesCents;
+    const netMarginPercentage = (netProfitCents / proposedPriceCents) * 100;
+
+    console.log(`[Pricing Engine] Margin Analysis Complete:`);
+    console.log(`  - Proposed Price: $${(proposedPriceCents / 100).toFixed(2)}`);
+    console.log(`  - Stripe Fee: $${(stripeFeeCents / 100).toFixed(2)}`);
+    console.log(`  - Supplier COGS: $${(wholesaleCOGS / 100).toFixed(2)}`);
+    console.log(`  - Allocated Reserves: $${(allocatedReservesCents / 100).toFixed(2)}`);
+    console.log(`  - Net Profit Cents: $${(netProfitCents / 100).toFixed(2)} (Margin: ${netMarginPercentage.toFixed(2)}%)`);
+
+    return {
+      sellingPriceCents: proposedPriceCents,
+      stripeFeeCents,
+      wholesaleCOGS,
+      allocatedReservesCents,
+      netProfitCents,
+      netMarginPercentage,
+    };
+  }
+
+  /**
    * Scores and ranks all available sourcing options for a SKU, selecting the optimal provider.
    */
   public optimize(sku: string, options: SourcingOption[], policy: PricingPolicy): OptimizationRecommendation {
@@ -108,25 +161,16 @@ export class SourcingAndPricingOptimizer {
       });
 
       return {
-        option,
-        minimumPriceCents,
+        sku,
+        recommendedPriceCents: minimumPriceCents,
+        selectedProviderId: option.providerId,
         expectedContributionCents,
         expectedMarginBps,
-        score,
+        optimizationScore: score,
       };
     });
 
-    // Sort by highest composite score first
-    evaluations.sort((a, b) => b.score - a.score);
-    const optimal = evaluations[0];
-
-    return {
-      sku,
-      recommendedPriceCents: optimal.minimumPriceCents,
-      selectedProviderId: optimal.option.providerId,
-      expectedContributionCents: optimal.expectedContributionCents,
-      expectedMarginBps: optimal.expectedMarginBps,
-      optimizationScore: parseFloat(optimal.score.toFixed(4)),
-    };
+    // Select the provider with the highest score
+    return evaluations.reduce((best, current) => current.optimizationScore > best.optimizationScore ? current : best, evaluations[0]);
   }
 }

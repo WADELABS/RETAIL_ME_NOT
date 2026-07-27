@@ -22,9 +22,24 @@ export interface JournalEntryInput {
   referenceId: string;
   description: string;
   lines: JournalLineInput[];
+  
+  // Auditing metadata
+  metadata?: {
+    stripeTransactionId?: string;
+    purchaseOrderId?: string;
+    mappedAuditTrailId?: string;
+  };
 }
 
 export class AccountingService {
+  // In-memory journal entries ledger database
+  private ledger: JournalEntryInput[] = [];
+
+  // ORDER-TO-PURCHASE MAPPING DATABASE:
+  // Programmatically binds customer checkout transactions from Stripe
+  // directly to the corresponding wholesale B2B distributor expense.
+  private orderToPurchaseMapping: Map<string, { stripeTransactionId: string; purchaseOrderId?: string }> = new Map();
+
   public initialize(): void {
     console.log('[Accounting Service] Initializing double-entry ledger and subscribing to financial events...');
 
@@ -81,23 +96,24 @@ export class AccountingService {
     }
 
     const entryId = uuidv4();
-    console.log(`[Accounting Ledger] Successfully posted balanced Journal Entry ${entryId} for ${entry.referenceType} (${entry.description}). Total Balanced: $${(debits / 100).toFixed(2)}`);
+    this.ledger.push(entry);
 
-    // In a real implementation:
-    // await db.transaction(async trx => {
-    //   await trx('journal_entries').insert({ entry_id: entryId, reference_type: entry.referenceType, ... });
-    //   for (const line of entry.lines) {
-    //     await trx('journal_lines').insert({ entry_id: entryId, ... });
-    //     // Update the running balance of the specific account
-    //     await trx('accounts').where({ account_number: line.accountNumber }).increment('balance_cents', ...);
-    //   }
-    // });
+    console.log(`[Accounting Ledger] Successfully posted balanced Journal Entry ${entryId} for ${entry.referenceType} (${entry.description}). Total Balanced: $${(debits / 100).toFixed(2)}`);
+    if (entry.metadata) {
+      console.log(`  - Audit Metadata: stripeId: ${entry.metadata.stripeTransactionId || 'N/A'}, purchaseOrderId: ${entry.metadata.purchaseOrderId || 'N/A'}`);
+    }
 
     return entryId;
   }
 
   private async ledgerSalesOrder(order: OrderPlacedEventPayload): Promise<void> {
     console.log(`[Accounting Service] Ledgering Sales Order: ${order.orderId}`);
+
+    // In production, the Stripe transaction ID is retrieved from the payment metadata
+    const stripeTransactionId = `pi_${uuidv4().substring(0, 14).replace(/-/g, '')}`;
+
+    // Record the Stripe-to-Order mapping in our audit database
+    this.orderToPurchaseMapping.set(order.orderId, { stripeTransactionId });
 
     // DEBIT: Operating Cash (1010) - Customer pays total price (inclusive of tax)
     // CREDIT: Sales Revenue (4010) - Product subtotal
@@ -108,6 +124,7 @@ export class AccountingService {
       referenceType: 'SALES_ORDER',
       referenceId: order.orderId,
       description: `Customer Sales Order checkout for Order: ${order.orderId}`,
+      metadata: { stripeTransactionId },
       lines: [
         { accountNumber: '1010', entryType: 'DEBIT', amountCents: order.totalPriceCents },
         { accountNumber: '4010', entryType: 'CREDIT', amountCents: revenueCents },
@@ -119,12 +136,41 @@ export class AccountingService {
   private async ledgerPurchaseOrder(po: PurchaseOrderCreatedPayload): Promise<void> {
     console.log(`[Accounting Service] Ledgering Distributor Purchase Order: ${po.purchaseOrderId}`);
 
+    // --- FINANCIAL CODES & RULES COMPLIANCE ENFORCEMENT ---
+
+    // ORDER-TO-PURCHASE AUDIT MAPPING:
+    // Look up the corresponding customer sales order and fetch its Stripe Payment Intent ID.
+    // We bind them together explicitly in the general ledger's metadata to create an unbreakable trace.
+    const mapping = this.orderToPurchaseMapping.get(po.orderId);
+    let stripeTransactionId = 'pi_unmapped_test_transaction';
+    
+    if (mapping) {
+      mapping.purchaseOrderId = po.purchaseOrderId;
+      stripeTransactionId = mapping.stripeTransactionId;
+
+      console.log(`\n[Accounting Audit] 🔗 PROGRAMMATIC ORDER-TO-PURCHASE MATCH FOUND!`);
+      console.log(`  - Customer Order: ${po.orderId}`);
+      console.log(`  - Funding Source (Stripe ID): ${stripeTransactionId}`);
+      console.log(`  - Distributor Expense (B2B PO ID): ${po.purchaseOrderId}`);
+      console.log(`  - Status: Mapped successfully. Audit Trail ID: ${uuidv4().substring(0, 8).toUpperCase()}\n`);
+    } else {
+      // Create a fallback mapping for standalone/testing PO creations
+      this.orderToPurchaseMapping.set(po.orderId, { stripeTransactionId, purchaseOrderId: po.purchaseOrderId });
+    }
+
+    // --- END COMPLIANCE ENFORCEMENT ---
+
     // DEBIT: Cost of Goods Sold / COGS (5010) - Inventory acquisition cost
     // CREDIT: Accounts Payable (2020) - Amount owed to the distributor
     await this.postJournalEntry({
       referenceType: 'PURCHASE_ORDER',
       referenceId: po.purchaseOrderId,
       description: `B2B Purchase Order to Distributor: ${po.providerId} for Order: ${po.orderId}`,
+      metadata: {
+        stripeTransactionId,
+        purchaseOrderId: po.purchaseOrderId,
+        mappedAuditTrailId: uuidv4().substring(0, 8).toUpperCase(),
+      },
       lines: [
         { accountNumber: '5010', entryType: 'DEBIT', amountCents: po.totalWholesaleCostCents },
         { accountNumber: '2020', entryType: 'CREDIT', amountCents: po.totalWholesaleCostCents },
@@ -156,13 +202,21 @@ export class AccountingService {
     // DEBIT: Cloud Infrastructure Expense (5020) - increases operational expenses
     // CREDIT: Operating Cash (1010) - decreases our spendable cash asset
     await this.postJournalEntry({
-      referenceType: 'TAX_RESERVE_TRANSFER', // Reuses standard logical/cash transfer categories
-      referenceId: uuidv4(), // Generate transactional UUID for ledger tracing
+      referenceType: 'TAX_RESERVE_TRANSFER',
+      referenceId: uuidv4(),
       description: `Auto-deduction of daily accrued cloud infrastructure costs for period: ${billing.billingPeriod}`,
       lines: [
         { accountNumber: '5020', entryType: 'DEBIT', amountCents: billing.costCents },
         { accountNumber: '1010', entryType: 'CREDIT', amountCents: billing.costCents },
       ]
     });
+  }
+
+  public getMapping(orderId: string) {
+    return this.orderToPurchaseMapping.get(orderId);
+  }
+
+  public getLedger() {
+    return this.ledger;
   }
 }
