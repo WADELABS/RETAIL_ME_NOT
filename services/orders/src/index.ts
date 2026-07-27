@@ -10,10 +10,15 @@ export enum OrderStatus {
   PARTIALLY_SHIPPED = 'PARTIALLY_SHIPPED',
   SHIPPED = 'SHIPPED',
   DELIVERED = 'DELIVERED',
-  RETURN_REQUESTED = 'RETURN_REQUESTED', // New return request status
-  RETURNED = 'RETURNED',                 // Final returned and resolved status
+  RETURN_REQUESTED = 'RETURN_REQUESTED',
+  RETURNED = 'RETURNED',
   CANCELLED = 'CANCELLED',
   FAILED = 'FAILED',
+}
+
+export enum PaymentMethod {
+  STRIPE_CREDIT_CARD = 'STRIPE_CREDIT_CARD',
+  STRIPE_ACH_FINANCIAL_CONNECTIONS = 'STRIPE_ACH_FINANCIAL_CONNECTIONS', // Instant Bank Login (Plaid-style)
 }
 
 // Strictly defines the valid state transition graph for ECOS orders
@@ -24,11 +29,11 @@ const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.ON_HOLD]: [OrderStatus.AWAITING_SHIPMENT, OrderStatus.CANCELLED],
   [OrderStatus.PARTIALLY_SHIPPED]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
   [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
-  [OrderStatus.DELIVERED]: [OrderStatus.RETURN_REQUESTED, OrderStatus.CANCELLED], // Customers can return or cancel delivered orders
-  [OrderStatus.RETURN_REQUESTED]: [OrderStatus.RETURNED],                        // Return resolves to RETURNED status
-  [OrderStatus.RETURNED]: [],  // End state
-  [OrderStatus.CANCELLED]: [], // End state
-  [OrderStatus.FAILED]: [],    // End state
+  [OrderStatus.DELIVERED]: [OrderStatus.RETURN_REQUESTED, OrderStatus.CANCELLED],
+  [OrderStatus.RETURN_REQUESTED]: [OrderStatus.RETURNED],
+  [OrderStatus.RETURNED]: [],
+  [OrderStatus.CANCELLED]: [],
+  [OrderStatus.FAILED]: [],
 };
 
 export interface Order {
@@ -40,6 +45,7 @@ export interface Order {
   shippingCents: number;
   discountCents: number;
   currency: string;
+  selectedPaymentMethod: PaymentMethod; // Mandatory payment-routing tracking
   placedAt: string;
   lineItems: Array<{
     sku: string;
@@ -63,15 +69,12 @@ export interface RmaRecord {
   sku: string;
   reason: string;
   isDefective: boolean;
-  prePaidLabel?: ShippingLabelResult; // Return label attached automatically for defective tech
+  prePaidLabel?: ShippingLabelResult;
   status: 'ISSUED' | 'RECEIVED' | 'RESOLVED';
   createdAt: string;
 }
 
 export class OrderStateMachine {
-  /**
-   * Validates whether a requested order status transition is legal.
-   */
   public static isValidTransition(from: OrderStatus, to: OrderStatus): boolean {
     const allowed = VALID_TRANSITIONS[from] || [];
     return allowed.includes(to);
@@ -82,18 +85,56 @@ export class OrderService {
   // In-memory data store for local simulation & testing
   private orders: Map<string, Order> = new Map();
   private transitions: OrderStateTransition[] = [];
-  
-  // Dedicated RMA database
   private rmas: Map<string, RmaRecord> = new Map();
 
-  // Instantiate carrier integration service
+  // High-value B2B payment method threshold (Default: $500.00 / 50,000 cents)
+  private highValuePaymentThresholdCents = 50000;
+
   private carrierService = new CarrierShippingService();
 
   /**
+   * DYNAMIC PAYMENT METHOD RESOLVER:
+   * Programmed specifically to look at the total shopping cart value in real-time.
+   * If it exceeds $500, we strictly hide standard credit card fields and display bank transfer options instead.
+   */
+  public resolveAllowedPaymentMethods(cartTotalCents: number): PaymentMethod[] {
+    // --- FINANCIAL CODES & RULES COMPLIANCE ENFORCEMENT ---
+
+    // Rule 1: For any B2B or consumer purchase exceeding $500.00, credit cards are blocked.
+    // Customers must use Stripe ACH Instant Verification (using Plaid-like direct bank login).
+    // This saves 2.1% in processing fees per order and completely eliminates chargeback fraud risk!
+    if (cartTotalCents >= this.highValuePaymentThresholdCents) {
+      console.warn(`[Payment Routing] HIGH-VALUE CART DETECTED ($${(cartTotalCents / 100).toFixed(2)} >= $${(this.highValuePaymentThresholdCents / 100).toFixed(2)}). Strictly restricting checkout to Instant Bank Verification (Stripe ACH).`);
+      return [PaymentMethod.STRIPE_ACH_FINANCIAL_CONNECTIONS];
+    }
+
+    // --- END COMPLIANCE ENFORCEMENT ---
+
+    // For smaller, low-risk, low-fee orders, allow standard credit card convenience
+    return [PaymentMethod.STRIPE_CREDIT_CARD, PaymentMethod.STRIPE_ACH_FINANCIAL_CONNECTIONS];
+  }
+
+  /**
    * Creates a new Customer Sales Order, defaulting to PENDING_PAYMENT.
+   * Strictly enforces backend payment method guards to prevent malicious API-level bypasses.
    */
   public async createOrder(orderInput: Omit<Order, 'orderId' | 'status' | 'placedAt'>): Promise<Order> {
     const orderId = uuidv4();
+    const totalPrice = orderInput.totalPriceCents;
+
+    // --- FINANCIAL CODES & RULES COMPLIANCE ENFORCEMENT ---
+
+    // Rule 2: Backend Payment Method Guard.
+    // Confirms the selected checkout payment method matches the legally resolved allowed methods.
+    // Block hackers trying to bypass our frontend UI to post a $1,500 credit card transaction!
+    const allowedMethods = this.resolveAllowedPaymentMethods(totalPrice);
+    if (!allowedMethods.includes(orderInput.selectedPaymentMethod)) {
+      console.error(`[Security Violation] REJECTED: Order total is $${(totalPrice / 100).toFixed(2)}. Selected payment method "${orderInput.selectedPaymentMethod}" is strictly prohibited for orders exceeding $500.`);
+      throw new RangeError('[Payment Error] Checkout failed: Credit card payments are disabled for orders exceeding $500. Please complete checkout via Instant Bank Verification (ACH).');
+    }
+
+    // --- END COMPLIANCE ENFORCEMENT ---
+
     const order: Order = {
       ...orderInput,
       orderId,
@@ -102,7 +143,7 @@ export class OrderService {
     };
 
     this.orders.set(orderId, order);
-    console.log(`[Order Service] Created Sales Order: ${orderId} in PENDING_PAYMENT state.`);
+    console.log(`[Order Service] Created Sales Order: ${orderId} in PENDING_PAYMENT state using Payment Method: ${order.selectedPaymentMethod}`);
     return order;
   }
 
@@ -120,7 +161,6 @@ export class OrderService {
 
   /**
    * Self-Service RMA Portal Engine.
-   * Enables customers to request trackable return codes. Automatically issues pre-paid labels for defective tech.
    */
   public async initiateSelfServiceRma(
     orderId: string,
@@ -139,9 +179,6 @@ export class OrderService {
       throw new Error(`[RMA Error] RMA request failed: Only DELIVERED orders can be returned. Current Status: ${order.status}`);
     }
 
-    // --- CODES AND RULES COMPLIANCE ENFORCEMENT ---
-
-    // Rule 1: Enforce the standard 30-day return window (from order placement/delivery)
     const placedDate = new Date(order.placedAt).getTime();
     const ageInDays = (Date.now() - placedDate) / (1000 * 60 * 60 * 24);
 
@@ -150,12 +187,9 @@ export class OrderService {
       throw new Error('[RMA Error] Return request rejected: Order is outside the allowable 30-day return window.');
     }
 
-    // --- END COMPLIANCE ENFORCEMENT ---
-
     const rmaId = `RMA-${uuidv4().substring(0, 8).toUpperCase()}`;
     let prePaidLabel: ShippingLabelResult | undefined = undefined;
 
-    // Rule 2: If the tech item is defective, we automatically call our Carrier Shipping service to generate a pre-paid return label!
     if (isDefective) {
       console.log(`  - Defective tech item flagged. Programmatically issuing pre-paid return shipping label...`);
       prePaidLabel = await this.carrierService.generatePrePaidReturnLabel('UPS', '1Z999AA101_ORIGINAL_TRACKING');
@@ -174,12 +208,10 @@ export class OrderService {
 
     this.rmas.set(rmaId, rma);
 
-    // 3. Transition the order state to RETURN_REQUESTED
     await this.transitionOrder(orderId, OrderStatus.RETURN_REQUESTED, `RMA ${rmaId} issued. Reason: ${reason}`);
 
     console.log(`[RMA Portal] SUCCESS: Issued RMA: ${rmaId} for SKU: ${sku}. Pre-paid Label: ${prePaidLabel ? 'ATTACHED' : 'NOT_REQUIRED'}`);
 
-    // Publish returns.rma.issued event to gateway
     await publisher.publish(
       'returns',
       'rma.issued',
@@ -208,16 +240,13 @@ export class OrderService {
 
     const fromStatus = order.status;
 
-    // 1. Enforce state machine rules
     if (!OrderStateMachine.isValidTransition(fromStatus, toStatus)) {
       throw new Error(`[Order Service Error] Invalid transition: Cannot transition Order ${orderId} from ${fromStatus} to ${toStatus}.`);
     }
 
-    // 2. Perform the transition
     order.status = toStatus;
     console.log(`[Order Service] Transitioned Order ${orderId} from ${fromStatus} -> ${toStatus}. Reason: ${reason}`);
 
-    // 3. Log the immutable transition to the audit ledger
     const transition: OrderStateTransition = {
       transitionId: uuidv4(),
       orderId,
@@ -228,7 +257,6 @@ export class OrderService {
     };
     this.transitions.push(transition);
 
-    // 4. Publish state change events to the Event Bus
     await publisher.publish(
       'orders',
       'order.status.updated',
@@ -241,7 +269,6 @@ export class OrderService {
       }
     );
 
-    // If payment succeeds and order transitions to PENDING_FULFILLMENT, publish the main order.placed trigger
     if (toStatus === OrderStatus.PENDING_FULFILLMENT) {
       await publisher.publish(
         'orders',

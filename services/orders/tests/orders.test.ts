@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OrderService, OrderStatus } from '../src/index';
+import { OrderService, OrderStatus, PaymentMethod } from '../src/index';
 import { CarrierShippingService } from '../../distributor-adapter-a/src/index';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -8,30 +8,33 @@ test('Order Service creates new orders in PENDING_PAYMENT state', async () => {
   const service = new OrderService();
   const order = await service.createOrder({
     customerId: uuidv4(),
-    totalPriceCents: 108000,
-    taxCents: 8000,
+    totalPriceCents: 10800, // $108.00 (below $500, CC is allowed)
+    taxCents: 800,
     shippingCents: 0,
     discountCents: 0,
     currency: 'USD',
+    selectedPaymentMethod: PaymentMethod.STRIPE_CREDIT_CARD,
     lineItems: [
-      { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 100000 }
+      { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 10000 }
     ],
   });
 
   assert.equal(order.status, OrderStatus.PENDING_PAYMENT, 'A new order must start in PENDING_PAYMENT');
+  assert.equal(order.selectedPaymentMethod, PaymentMethod.STRIPE_CREDIT_CARD);
 });
 
 test('Order Service enforces state machine transition rules', async () => {
   const service = new OrderService();
   const order = await service.createOrder({
     customerId: uuidv4(),
-    totalPriceCents: 108000,
-    taxCents: 8000,
+    totalPriceCents: 10800,
+    taxCents: 800,
     shippingCents: 0,
     discountCents: 0,
     currency: 'USD',
+    selectedPaymentMethod: PaymentMethod.STRIPE_CREDIT_CARD,
     lineItems: [
-      { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 100000 }
+      { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 10000 }
     ],
   });
 
@@ -55,13 +58,14 @@ test('Order Service creates immutable audit trails for every transition', async 
   const service = new OrderService();
   const order = await service.createOrder({
     customerId: uuidv4(),
-    totalPriceCents: 108000,
-    taxCents: 8000,
+    totalPriceCents: 10800,
+    taxCents: 800,
     shippingCents: 0,
     discountCents: 0,
     currency: 'USD',
+    selectedPaymentMethod: PaymentMethod.STRIPE_CREDIT_CARD,
     lineItems: [
-      { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 100000 }
+      { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 10000 }
     ],
   });
 
@@ -79,7 +83,7 @@ test('Order Service creates immutable audit trails for every transition', async 
 });
 
 
-// --- 1. CARRIER SHIPPING LABEL GENERATION TESTS ---
+// --- CARRIER SHIPPING LABEL GENERATION TESTS ---
 
 test('Carrier Shipping Service generates valid tracking and base64-PDF label documents', async () => {
   const carrierService = new CarrierShippingService();
@@ -92,53 +96,52 @@ test('Carrier Shipping Service generates valid tracking and base64-PDF label doc
 });
 
 
-// --- 2. SELF-SERVICE RETURNS & RMA PORTAL ENGINE TESTS ---
+// --- SELF-SERVICE RETURNS & RMA PORTAL ENGINE TESTS ---
 
 test('Self-Service RMA Portal accepts valid return requests and programmatically issues RMAs', async () => {
   const service = new OrderService();
   const order = await service.createOrder({
     customerId: uuidv4(),
-    totalPriceCents: 129900,
+    totalPriceCents: 12900,
     taxCents: 0,
     shippingCents: 0,
     discountCents: 0,
     currency: 'USD',
-    lineItems: [{ sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 129900 }],
+    selectedPaymentMethod: PaymentMethod.STRIPE_CREDIT_CARD,
+    lineItems: [{ sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 12900 }],
   });
 
-  // Transition order to DELIVERED status to simulate active delivery history
   await service.transitionOrder(order.orderId, OrderStatus.PENDING_FULFILLMENT, 'Pay');
   await service.transitionOrder(order.orderId, OrderStatus.AWAITING_SHIPMENT, 'Route');
   await service.transitionOrder(order.orderId, OrderStatus.SHIPPED, 'Ship');
   await service.transitionOrder(order.orderId, OrderStatus.DELIVERED, 'Deliver');
 
-  // Customer requests a standard self-service return inside our 30-day window
   const rma = await service.initiateSelfServiceRma(
     order.orderId,
     'LAPTOP-WADE-01',
     'Customer changed mind',
-    false // Non-defective, standard change-of-mind return
+    false
   );
 
   assert.ok(rma.rmaId.startsWith('RMA-'), 'RMA ID must be unique and trackable');
   assert.equal(rma.status, 'ISSUED');
-  assert.equal(rma.prePaidLabel, undefined, 'Pre-paid return shipping label is NOT automatically issued for change-of-mind');
+  assert.equal(rma.prePaidLabel, undefined);
 
-  // Confirm Order state machine transitioned to RETURN_REQUESTED
   const updatedOrder = service.getOrder(order.orderId)!;
-  assert.equal(updatedOrder.status, OrderStatus.RETURN_REQUESTED, 'Order must transition to RETURN_REQUESTED upon RMA issuance');
+  assert.equal(updatedOrder.status, OrderStatus.RETURN_REQUESTED);
 });
 
 test('Self-Service RMA Portal automatically attaches a pre-paid return shipping label for defective tech', async () => {
   const service = new OrderService();
   const order = await service.createOrder({
     customerId: uuidv4(),
-    totalPriceCents: 129900,
+    totalPriceCents: 12900,
     taxCents: 0,
     shippingCents: 0,
     discountCents: 0,
+    selectedPaymentMethod: PaymentMethod.STRIPE_CREDIT_CARD,
     currency: 'USD',
-    lineItems: [{ sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 129900 }],
+    lineItems: [{ sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 12900 }],
   });
 
   await service.transitionOrder(order.orderId, OrderStatus.PENDING_FULFILLMENT, 'Pay');
@@ -146,19 +149,16 @@ test('Self-Service RMA Portal automatically attaches a pre-paid return shipping 
   await service.transitionOrder(order.orderId, OrderStatus.SHIPPED, 'Ship');
   await service.transitionOrder(order.orderId, OrderStatus.DELIVERED, 'Deliver');
 
-  // Customer requests return specifically flagging the tech item as DEFECTIVE
   const rma = await service.initiateSelfServiceRma(
     order.orderId,
     'LAPTOP-WADE-01',
     'Screen flickers and has horizontal lines',
-    true // FLAG DEFECTIVE TECH
+    true
   );
 
   assert.ok(rma.rmaId.startsWith('RMA-'));
   assert.equal(rma.isDefective, true);
-  
-  // Verify that ECOS programmatically issued a pre-paid return label automatically
-  assert.ok(rma.prePaidLabel, 'A pre-paid return shipping label must be automatically issued for defective tech');
+  assert.ok(rma.prePaidLabel);
   assert.equal(rma.prePaidLabel.carrier, 'UPS');
   assert.ok(rma.prePaidLabel.trackingNumber.startsWith('1Z'));
 });
@@ -167,12 +167,13 @@ test('Self-Service RMA Portal strictly rejects return requests exceeding the 30-
   const service = new OrderService();
   const order = await service.createOrder({
     customerId: uuidv4(),
-    totalPriceCents: 129900,
+    totalPriceCents: 12900,
     taxCents: 0,
     shippingCents: 0,
     discountCents: 0,
+    selectedPaymentMethod: PaymentMethod.STRIPE_CREDIT_CARD,
     currency: 'USD',
-    lineItems: [{ sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 129900 }],
+    lineItems: [{ sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 12900 }],
   });
 
   await service.transitionOrder(order.orderId, OrderStatus.PENDING_FULFILLMENT, 'Pay');
@@ -180,16 +181,79 @@ test('Self-Service RMA Portal strictly rejects return requests exceeding the 30-
   await service.transitionOrder(order.orderId, OrderStatus.SHIPPED, 'Ship');
   await service.transitionOrder(order.orderId, OrderStatus.DELIVERED, 'Deliver');
 
-  // Backdate the order's placedAt date by 45 days in the database to simulate an expired window
   const backdate = new Date(Date.now() - 45 * 86400000).toISOString();
   order.placedAt = backdate;
 
-  // The RMA Portal must actively block this attempt and reject the promise
   await assert.rejects(
     async () => {
       await service.initiateSelfServiceRma(order.orderId, 'LAPTOP-WADE-01', 'Defective', true);
     },
-    /outside the allowable 30-day return window/,
-    'RMA requests outside the 30-day return window must fail-safe'
+    /outside the allowable 30-day return window/
   );
+});
+
+
+// --- ADVANCED B2B DYNAMIC PAYMENT METHOD TESTS ---
+
+test('Payment Resolver allows both credit cards and bank transfers for low-value orders (< $500)', () => {
+  const service = new OrderService();
+
+  const allowedMethods = service.resolveAllowedPaymentMethods(45000); // $450.00
+  
+  assert.ok(allowedMethods.includes(PaymentMethod.STRIPE_CREDIT_CARD));
+  assert.ok(allowedMethods.includes(PaymentMethod.STRIPE_ACH_FINANCIAL_CONNECTIONS), 'Legitimate, small orders support CC convenience');
+});
+
+test('Payment Resolver strictly hides credit cards for high-value orders (>= $500)', () => {
+  const service = new OrderService();
+
+  const allowedMethods = service.resolveAllowedPaymentMethods(129900); // $1,299.00
+  
+  assert.equal(allowedMethods.length, 1);
+  assert.equal(allowedMethods[0], PaymentMethod.STRIPE_ACH_FINANCIAL_CONNECTIONS, 'Must restrict to Stripe ACH Direct Debit');
+  assert.equal(allowedMethods.includes(PaymentMethod.STRIPE_CREDIT_CARD), false, 'Credit cards must be hidden');
+});
+
+test('Backend Payment Guard strictly blocks and rejects credit card checkout attempts on high-value orders', async () => {
+  const service = new OrderService();
+
+  // Hacky buyer attempts to bypass frontend and POST a $1,299.00 purchase on a credit card
+  await assert.rejects(
+    async () => {
+      await service.createOrder({
+        customerId: uuidv4(),
+        totalPriceCents: 129900, // $1,299.00 (EXCEEDS $500 LIMIT!)
+        taxCents: 10392,
+        shippingCents: 0,
+        discountCents: 0,
+        currency: 'USD',
+        selectedPaymentMethod: PaymentMethod.STRIPE_CREDIT_CARD, // VIOLATION!
+        lineItems: [
+          { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 129900 }
+        ],
+      });
+    },
+    RangeError,
+    'The backend must fail-safe and block credit card usage on high-value orders'
+  );
+});
+
+test('Backend Payment Guard successfully allows ACH checkout on high-value orders', async () => {
+  const service = new OrderService();
+
+  const order = await service.createOrder({
+    customerId: uuidv4(),
+    totalPriceCents: 129900, // $1,299.00 (EXCEEDS $500 LIMIT)
+    taxCents: 10392,
+    shippingCents: 0,
+    discountCents: 0,
+    currency: 'USD',
+    selectedPaymentMethod: PaymentMethod.STRIPE_ACH_FINANCIAL_CONNECTIONS, // COMPLIANT PAYMENT METHOD
+    lineItems: [
+      { sku: 'LAPTOP-WADE-01', quantity: 1, unitPriceCents: 129900 }
+    ],
+  });
+
+  assert.equal(order.status, OrderStatus.PENDING_PAYMENT);
+  assert.equal(order.selectedPaymentMethod, PaymentMethod.STRIPE_ACH_FINANCIAL_CONNECTIONS, 'ACH direct checkout must succeed');
 });
