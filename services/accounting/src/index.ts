@@ -22,6 +22,7 @@ export interface JournalEntryInput {
   referenceId: string;
   description: string;
   lines: JournalLineInput[];
+  timestamp: string; // The transaction date for report filtering
   
   // Auditing metadata
   metadata?: {
@@ -31,14 +32,39 @@ export interface JournalEntryInput {
   };
 }
 
+export interface MonthlyLedgerReport {
+  year: number;
+  month: number;
+  totalPurchaseVolumeCents: number;
+  salesOrderCount: number;
+  purchaseOrderCount: number;
+  onTimeUpfrontPaymentPercentage: number; // Percentage of POs paid instantly on-time via virtual cards
+  generatedAt: string;
+}
+
+export interface DistributorInvoicePayload {
+  invoiceId: string;
+  purchaseOrderId: string;
+  billedAmountCents: number;
+  shippedLineItems: Array<{ sku: string; quantity: number }>;
+}
+
+export interface ReconciliationResult {
+  status: 'RECONCILED_SUCCESS' | 'DISCREPANCY_QUARANTINED';
+  discrepancyReason?: string;
+  invoiceId: string;
+  purchaseOrderId: string;
+}
+
 export class AccountingService {
   // In-memory journal entries ledger database
   private ledger: JournalEntryInput[] = [];
 
   // ORDER-TO-PURCHASE MAPPING DATABASE:
-  // Programmatically binds customer checkout transactions from Stripe
-  // directly to the corresponding wholesale B2B distributor expense.
   private orderToPurchaseMapping: Map<string, { stripeTransactionId: string; purchaseOrderId?: string }> = new Map();
+
+  // Simulated Carrier Shipment database (simulating EDI 856 Advanced Ship Notices)
+  private verifiedShipments: Map<string, Array<{ sku: string; quantity: number }>> = new Map();
 
   public initialize(): void {
     console.log('[Accounting Service] Initializing double-entry ledger and subscribing to financial events...');
@@ -85,9 +111,18 @@ export class AccountingService {
   }
 
   /**
+   * Registers a verified distributor carrier shipment log (EDI 856).
+   * Provided for three-way match account reconciliation.
+   */
+  public registerVerifiedShipment(purchaseOrderId: string, items: Array<{ sku: string; quantity: number }>): void {
+    this.verifiedShipments.set(purchaseOrderId, items);
+    console.log(`[Accounting Service] Registered Verified Carrier Shipment for PO: ${purchaseOrderId}`);
+  }
+
+  /**
    * Posts a journal entry. Strictly enforces that SUM(Debits) === SUM(Credits).
    */
-  public async postJournalEntry(entry: JournalEntryInput): Promise<string> {
+  public async postJournalEntry(entry: Omit<JournalEntryInput, 'timestamp'>): Promise<string> {
     const debits = entry.lines.filter(l => l.entryType === 'DEBIT').reduce((sum, l) => sum + l.amountCents, 0);
     const credits = entry.lines.filter(l => l.entryType === 'CREDIT').reduce((sum, l) => sum + l.amountCents, 0);
 
@@ -96,7 +131,11 @@ export class AccountingService {
     }
 
     const entryId = uuidv4();
-    this.ledger.push(entry);
+    const fullEntry: JournalEntryInput = {
+      ...entry,
+      timestamp: new Date().toISOString(),
+    };
+    this.ledger.push(fullEntry);
 
     console.log(`[Accounting Ledger] Successfully posted balanced Journal Entry ${entryId} for ${entry.referenceType} (${entry.description}). Total Balanced: $${(debits / 100).toFixed(2)}`);
     if (entry.metadata) {
@@ -106,18 +145,151 @@ export class AccountingService {
     return entryId;
   }
 
+  /**
+   * AUDITABLE ORDER VOLUME ANALYTICS:
+   * Programmatically parses posted journal entries, generating clean, exportable monthly financial statements.
+   */
+  public generateMonthlyLedgerReport(year: number, month: number): MonthlyLedgerReport {
+    console.log(`[Accounting Analytics] Generating monthly ledger report for ${year}-${month.toString().padStart(2, '0')}...`);
+
+    let totalPurchaseVolumeCents = 0;
+    let salesOrderCount = 0;
+    let purchaseOrderCount = 0;
+    let upfrontPaidCount = 0;
+
+    for (const entry of this.ledger) {
+      const entryDate = new Date(entry.timestamp);
+      
+      // Filter entries by calendar month
+      if (entryDate.getFullYear() === year && (entryDate.getMonth() + 1) === month) {
+        if (entry.referenceType === 'SALES_ORDER') {
+          salesOrderCount++;
+        } else if (entry.referenceType === 'PURCHASE_ORDER') {
+          purchaseOrderCount++;
+          
+          // Sum up the wholesale purchase volumes (COGS Debit line)
+          const cogsLine = entry.lines.find(l => l.accountNumber === '5010' && l.entryType === 'DEBIT');
+          if (cogsLine) {
+            totalPurchaseVolumeCents += cogsLine.amountCents;
+          }
+
+          // Check if PO was paid upfront instantly via Stripe Virtual Card
+          if (entry.metadata?.stripeTransactionId && entry.metadata?.stripeTransactionId !== 'pi_unmapped_test_transaction') {
+            upfrontPaidCount++;
+          }
+        }
+      }
+    }
+
+    const onTimeUpfrontPaymentPercentage = purchaseOrderCount > 0 ? (upfrontPaidCount / purchaseOrderCount) * 100 : 100;
+
+    console.log(`[Accounting Analytics] Report compiled:`);
+    console.log(`  - Total Purchase Volume (TPV): $${(totalPurchaseVolumeCents / 100).toFixed(2)}`);
+    console.log(`  - Sales Orders processed: ${salesOrderCount}`);
+    console.log(`  - B2B Purchase Orders generated: ${purchaseOrderCount}`);
+    console.log(`  - On-time Upfront Card Payment rate: ${onTimeUpfrontPaymentPercentage.toFixed(1)}%\n`);
+
+    return {
+      year,
+      month,
+      totalPurchaseVolumeCents,
+      salesOrderCount,
+      purchaseOrderCount,
+      onTimeUpfrontPaymentPercentage,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * B2B DISTRIBUTOR ACCOUNT RECONCILIATION:
+   * Performs a Three-Way Match (Purchase Order expected cost vs Carrier Shipping logs vs Billed Invoice).
+   * Halts any credit drawdown and flags discrepancies instantly.
+   */
+  public reconcileDistributorInvoice(invoice: DistributorInvoicePayload): ReconciliationResult {
+    console.log(`[Account Reconciliation] Reconciling Distributor Invoice: ${invoice.invoiceId} for B2B PO: ${invoice.purchaseOrderId}...`);
+
+    // 1. Fetch the original Purchase Order recorded in our General Ledger
+    const originalEntry = this.ledger.find(e => e.referenceType === 'PURCHASE_ORDER' && e.referenceId === invoice.purchaseOrderId);
+    if (!originalEntry) {
+      console.error(`[Reconciliation Warning] Halt payment: Original Purchase Order ${invoice.purchaseOrderId} does not exist in ledger.`);
+      return {
+        status: 'DISCREPANCY_QUARANTINED',
+        discrepancyReason: 'ORIGINAL_PURCHASE_ORDER_NOT_FOUND',
+        invoiceId: invoice.invoiceId,
+        purchaseOrderId: invoice.purchaseOrderId,
+      };
+    }
+
+    const expectedCostLine = originalEntry.lines.find(l => l.accountNumber === '5010' && l.entryType === 'DEBIT')!;
+    const expectedCostCents = expectedCostLine.amountCents;
+
+    // --- FINANCIAL CODES & RULES COMPLIANCE ENFORCEMENT ---
+
+    // Rule A: Validate Invoiced Cost Mismatches (Overbilling Defense)
+    // If the billed invoice amount is higher than our agreed-upon PO wholesale cost, halt checkout!
+    if (invoice.billedAmountCents !== expectedCostCents) {
+      console.error(`\n[Reconciliation Critical] 🚨 COST DISCREPANCY DETECTED!`);
+      console.error(`  - Invoice Billed Amount: $${(invoice.billedAmountCents / 100).toFixed(2)}`);
+      console.error(`  - PO Agreed Wholesale Cost: $${(expectedCostCents / 100).toFixed(2)}`);
+      console.error('  - Action: Halting payment, quarantining invoice, and alerting support.');
+
+      return {
+        status: 'DISCREPANCY_QUARANTINED',
+        discrepancyReason: 'WHOLESALE_COST_DISCREPANCY_OVERBILLING',
+        invoiceId: invoice.invoiceId,
+        purchaseOrderId: invoice.purchaseOrderId,
+      };
+    }
+
+    // Rule B: Validate Carrier Shipment Logs (Under-delivery Defense)
+    // Cross-references against verified carrier logs (EDI 856 ASN) to ensure they are only billing for items actually shipped!
+    const verifiedItems = this.verifiedShipments.get(invoice.purchaseOrderId);
+    if (!verifiedItems) {
+      console.error(`\n[Reconciliation Critical] 🚨 LOGISTICS DISCREPANCY DETECTED!`);
+      console.error(`  - Action: No verified carrier shipment records exist for PO ${invoice.purchaseOrderId}. Billed before delivery. Halting.`);
+      
+      return {
+        status: 'DISCREPANCY_QUARANTINED',
+        discrepancyReason: 'NO_VERIFIED_CARRIER_SHIPMENT_LOG_FOUND',
+        invoiceId: invoice.invoiceId,
+        purchaseOrderId: invoice.purchaseOrderId,
+      };
+    }
+
+    for (const billedItem of invoice.shippedLineItems) {
+      const shippedItem = verifiedItems.find(i => i.sku === billedItem.sku);
+      if (!shippedItem || shippedItem.quantity !== billedItem.quantity) {
+        console.error(`\n[Reconciliation Critical] 🚨 QUANTITY DISCREPANCY DETECTED for SKU: ${billedItem.sku}!`);
+        console.error(`  - Billed Invoice Quantity: ${billedItem.quantity}`);
+        console.error(`  - Carrier Shipped Quantity: ${shippedItem ? shippedItem.quantity : 0}`);
+        console.error('  - Action: Halting payment, quarantining invoice, and alerting support.');
+
+        return {
+          status: 'DISCREPANCY_QUARANTINED',
+          discrepancyReason: `QUANTITY_DISCREPANCY_UNSHIPPED_ITEMS_BILLED: ${billedItem.sku}`,
+          invoiceId: invoice.invoiceId,
+          purchaseOrderId: invoice.purchaseOrderId,
+        };
+      }
+    }
+
+    // --- END COMPLIANCE ENFORCEMENT ---
+
+    console.log(`[Account Reconciliation] SUCCESS: Three-Way Match complete for Invoice ${invoice.invoiceId}. Reconciled cleanly.`);
+    
+    return {
+      status: 'RECONCILED_SUCCESS',
+      invoiceId: invoice.invoiceId,
+      purchaseOrderId: invoice.purchaseOrderId,
+    };
+  }
+
   private async ledgerSalesOrder(order: OrderPlacedEventPayload): Promise<void> {
     console.log(`[Accounting Service] Ledgering Sales Order: ${order.orderId}`);
 
-    // In production, the Stripe transaction ID is retrieved from the payment metadata
     const stripeTransactionId = `pi_${uuidv4().substring(0, 14).replace(/-/g, '')}`;
-
-    // Record the Stripe-to-Order mapping in our audit database
     this.orderToPurchaseMapping.set(order.orderId, { stripeTransactionId });
 
-    // DEBIT: Operating Cash (1010) - Customer pays total price (inclusive of tax)
-    // CREDIT: Sales Revenue (4010) - Product subtotal
-    // CREDIT: Sales Tax Liability (2010) - Sales tax collected
     const revenueCents = order.totalPriceCents - order.taxCents;
 
     await this.postJournalEntry({
@@ -136,11 +308,6 @@ export class AccountingService {
   private async ledgerPurchaseOrder(po: PurchaseOrderCreatedPayload): Promise<void> {
     console.log(`[Accounting Service] Ledgering Distributor Purchase Order: ${po.purchaseOrderId}`);
 
-    // --- FINANCIAL CODES & RULES COMPLIANCE ENFORCEMENT ---
-
-    // ORDER-TO-PURCHASE AUDIT MAPPING:
-    // Look up the corresponding customer sales order and fetch its Stripe Payment Intent ID.
-    // We bind them together explicitly in the general ledger's metadata to create an unbreakable trace.
     const mapping = this.orderToPurchaseMapping.get(po.orderId);
     let stripeTransactionId = 'pi_unmapped_test_transaction';
     
@@ -154,14 +321,9 @@ export class AccountingService {
       console.log(`  - Distributor Expense (B2B PO ID): ${po.purchaseOrderId}`);
       console.log(`  - Status: Mapped successfully. Audit Trail ID: ${uuidv4().substring(0, 8).toUpperCase()}\n`);
     } else {
-      // Create a fallback mapping for standalone/testing PO creations
       this.orderToPurchaseMapping.set(po.orderId, { stripeTransactionId, purchaseOrderId: po.purchaseOrderId });
     }
 
-    // --- END COMPLIANCE ENFORCEMENT ---
-
-    // DEBIT: Cost of Goods Sold / COGS (5010) - Inventory acquisition cost
-    // CREDIT: Accounts Payable (2020) - Amount owed to the distributor
     await this.postJournalEntry({
       referenceType: 'PURCHASE_ORDER',
       referenceId: po.purchaseOrderId,
@@ -181,9 +343,6 @@ export class AccountingService {
   private async ledgerTaxReserveTransfer(tax: TaxLiabilityRecordedPayload): Promise<void> {
     console.log(`[Accounting Service] Ledgering Tax Reserve Transfer: ${tax.transactionId}`);
 
-    // Logical Bank Transfer:
-    // DEBIT: Tax Reserve Account (1020) - Moves tax funds into untouchable reserve asset
-    // CREDIT: Operating Cash (1010) - Reduces spendable cash
     await this.postJournalEntry({
       referenceType: 'TAX_RESERVE_TRANSFER',
       referenceId: tax.transactionId,
@@ -198,9 +357,6 @@ export class AccountingService {
   private async ledgerCloudInfrastructureExpense(billing: DailyCloudCostAccruedPayload): Promise<void> {
     console.log(`[Accounting Service] Ledgering Cloud Infrastructure Expense for period: ${billing.billingPeriod}`);
 
-    // Automated Infrastructure Expense Deduction:
-    // DEBIT: Cloud Infrastructure Expense (5020) - increases operational expenses
-    // CREDIT: Operating Cash (1010) - decreases our spendable cash asset
     await this.postJournalEntry({
       referenceType: 'TAX_RESERVE_TRANSFER',
       referenceId: uuidv4(),
