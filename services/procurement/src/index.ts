@@ -4,8 +4,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { randomBytes } from 'node:crypto';
 
-// Define the event schema for when the Fulfillment Engine assigns an order.
-// We expand the payload to include the real-time 'riskRecommendation' calculated by ECOS Risk Engine.
+// Define the event schema for when the Fulfillment Engine assigns an order
 const FulfillmentAssignedSchema = z.object({
   eventId: z.string().uuid(),
   timestamp: z.string().datetime(),
@@ -40,7 +39,6 @@ export interface PurchaseOrderRecord {
   orderId: string;
   providerId: string;
   totalWholesaleCostCents: number;
-  // New secure HELD_FOR_FRAUD_AUDIT status blocking automated reordering
   status: 'CREATED' | 'PAID_UPFRONT_VIRTUAL_CARD' | 'EDI_850_TRANSMITTED' | 'ACCEPTED_BY_DISTRIBUTOR' | 'SHIPPED_BY_DISTRIBUTOR' | 'FAILED_TRANSMISSION' | 'HELD_FOR_FRAUD_AUDIT';
   ediPayload?: string;
   issuedCard?: StripeVirtualCard;
@@ -85,7 +83,6 @@ export function initialize() {
       // --- CRITICAL B2B PROCUREMENT FRAUD GATE LOCK ---
 
       // Rule 1: IF risk recommendation is DECLINE (Extreme Fraud)
-      // Hard block the transaction completely, preventing any B2B capital spend
       if (payload.riskRecommendation === 'DECLINE') {
         console.error(`[Procurement Security] CRITICAL BLOCK: Order ${payload.orderId} failed risk check (DECLINE). Rejecting PO generation to prevent capital loss.`);
         poRecord.status = 'FAILED_TRANSMISSION';
@@ -93,8 +90,7 @@ export function initialize() {
         return;
       }
 
-      // Rule 2: IF risk recommendation is MANUAL_REVIEW (Borderline / Stripe Radar flag)
-      // Pauses order routing, quarantines the PO, and strictly BLOCKS card charging and EDI 850 transmission.
+      // Rule 2: IF risk recommendation is MANUAL_REVIEW (Quarantine)
       if (payload.riskRecommendation === 'MANUAL_REVIEW') {
         console.warn(`\n[Procurement Security] 🚨 FRAUD HOLD ACTIVATED for PO: ${purchaseOrderId}!`);
         console.warn(`  - Context: Customer checkout Order ${payload.orderId} triggered Stripe Radar manual review.`);
@@ -119,7 +115,7 @@ export function initialize() {
         return;
       }
 
-      // Rule 3: Only ALLOWED orders proceed to upfront virtual card payment and EDI routing
+      // Rule 3: Only ALLOWED orders proceed to upfront virtual card payment
       console.log(`[Procurement Security] Approved: Risk check passed (ALLOW). Executing instant payment and dropship routing...`);
 
       // Execute Virtual Card generation and EDI 850 compile
@@ -164,7 +160,7 @@ export function initialize() {
 
 /**
  * Human-in-the-Loop Release Action:
- * Called by administrators from the dashboard to manual approve, release, and pay a quarantined PO.
+ * Called by administrators from the dashboard ("Approve & Order" button) to manually release, pay, and finalize a quarantined PO.
  */
 export async function releaseHeldProcurement(purchaseOrderId: string): Promise<PurchaseOrderRecord> {
   const po = purchaseOrders.get(purchaseOrderId);
@@ -182,12 +178,12 @@ export async function releaseHeldProcurement(purchaseOrderId: string): Promise<P
   try {
     const automator = new EdiDropshipAutomator();
     
-    // 1. Programmatically issue the Stripe Virtual Card
+    // 1. Programmatically issue the Stripe Virtual Card (clears the PO status to PAID_UPFRONT_VIRTUAL_CARD)
     const card = automator.generateVirtualCard(po.totalWholesaleCostCents);
     po.issuedCard = card;
     po.status = 'PAID_UPFRONT_VIRTUAL_CARD';
 
-    // Simulated lookup of items to translate (retrieved from DB in production)
+    // Simulated lookup of items to translate
     const items = [{ sku: 'LAPTOP-WADE-01', quantity: 1, wholesaleCostCents: po.totalWholesaleCostCents }];
 
     // 2. Generate and transmit the EDI 850 document
@@ -224,9 +220,6 @@ export async function releaseHeldProcurement(purchaseOrderId: string): Promise<P
 // --- 1. ANSI X12 EDI DROPSHIP & VIRTUAL CARD AUTOMATION MODULE ---
 
 export class EdiDropshipAutomator {
-  /**
-   * Helper to programmatically generate a single-use virtual card via Stripe Issuing.
-   */
   public generateVirtualCard(spendingLimitCents: number): StripeVirtualCard {
     return {
       cardId: `ic_${randomBytes(4).toString('hex')}`,
@@ -237,9 +230,6 @@ export class EdiDropshipAutomator {
     };
   }
 
-  /**
-   * Translates a Purchase Order and its single-use virtual card into an industry-standard ANSI X12 EDI 850 document.
-   */
   public translatePoToEdi850(
     po: PurchaseOrderRecord,
     items: Array<{ sku: string; quantity: number; wholesaleCostCents: number }>
@@ -291,9 +281,6 @@ export class EdiDropshipAutomator {
     return segments.join('\n');
   }
 
-  /**
-   * Parses an incoming ANSI X12 EDI 855 (Purchase Order Acknowledgment) document.
-   */
   public parseEdi855Acknowledgment(edi855Text: string): { purchaseOrderId: string; status: 'ACCEPTED' | 'REJECTED' } {
     console.log('[Procurement EDI] Parsing incoming EDI 855 (Purchase Order Acknowledgment)...');
 
@@ -318,9 +305,6 @@ export class EdiDropshipAutomator {
     return { purchaseOrderId, status };
   }
 
-  /**
-   * BLIND DROPSHIPPING: Parses an incoming ANSI X12 EDI 856 (Advanced Ship Notice) document from the distributor.
-   */
   public parseEdi856ShipNotice(edi856Text: string): { purchaseOrderId: string; carrier: string; trackingNumber: string } {
     console.log('[Procurement EDI] Parsing incoming EDI 856 (Advanced Ship Notice / Shipment alert)...');
 
@@ -358,12 +342,23 @@ export class EdiDropshipAutomator {
 export class DistributorOrderingClient {
   /**
    * Pathway A: Portal Card-Vaulting (Modern JSON/REST API).
+   * ASYNCHRONOUS FULFILLMENT BLOCK: This client explicitly aborts and SKIPS ordering
+   * unless the Purchase Order status is fully cleared and verified ('PAID_UPFRONT_VIRTUAL_CARD').
    */
   public async submitOrderViaApi(
     po: PurchaseOrderRecord,
     items: Array<{ sku: string; quantity: number }>
   ): Promise<{ status: 'SUCCESS'; distributorOrderId: string }> {
     console.log(`[Distributor API Client] Initiating tokenized B2B ordering for PO: ${po.purchaseOrderId}...`);
+
+    // --- ASYNC FULFILLMENT BLOCK ENFORCEMENT ---
+    // Rule 1: We strictly reject and skip order routing if the PO is un-cleared or held on fraud audit!
+    if (po.status !== 'PAID_UPFRONT_VIRTUAL_CARD' && po.status !== 'EDI_850_TRANSMITTED') {
+      console.error(`\n[Procurement Collision Guard] 🛑 CRITICAL ABORT: Skipping automated checkout for PO: ${po.purchaseOrderId}. Transaction is NOT cleared. Current status: ${po.status}`);
+      throw new Error(`[Procurement Error] Automated ordering suspended: PO ${po.purchaseOrderId} has not passed security clearance (Current Status: ${po.status}).`);
+    }
+    // --- END COMPLIANCE ENFORCEMENT ---
+
     console.log(`  - Target: Secure API Endpoint (Charge default vaulted merchant card on file)`);
 
     const distributorOrderId = `IM-API-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -374,21 +369,29 @@ export class DistributorOrderingClient {
 
   /**
    * Pathway B: RPA Browser Automation (Legacy Supplier Portals).
+   * ASYNCHRONOUS FULFILLMENT BLOCK: This browser automation scripts programmatically aborts
+   * and skips website checkout if the PO is on fraud hold.
    */
   public async submitOrderViaBrowserAutomation(
     po: PurchaseOrderRecord,
     items: Array<{ sku: string; quantity: number }>
   ): Promise<{ status: 'SUCCESS'; rpaReceiptId: string }> {
     console.log(`[Distributor RPA Client] Launching Robotic Process Automation (RPA) check-out loop...`);
+
+    // --- ASYNC FULFILLMENT BLOCK ENFORCEMENT ---
+    // Rule 2: Strictly block legacy web browser checkouts if the PO is unverified or quarantined!
+    if (po.status !== 'PAID_UPFRONT_VIRTUAL_CARD' && po.status !== 'EDI_850_TRANSMITTED') {
+      console.error(`\n[Procurement Collision Guard] 🛑 CRITICAL ABORT: Skipping headless browser checkout for PO: ${po.purchaseOrderId}. Security status is unverified. Current status: ${po.status}`);
+      throw new Error(`[Procurement Error] Automated web checkout aborted: PO ${po.purchaseOrderId} has failed security clearance (Current Status: ${po.status}).`);
+    }
+    // --- END COMPLIANCE ENFORCEMENT ---
     
     if (!po.issuedCard) {
       throw new Error('[RPA Error] Check-out failed: No active Stripe single-use virtual card generated for this PO.');
     }
 
     console.log(`  - Launching secure, headless Chromium browser instance...`);
-    console.log(`  - Navigating to legacy reseller portal: 'https://resellers.distributor-legacy.com/login'...`);
-    console.log(`  - Programmatically entering corporate reseller credentials...`);
-    console.log(`  - Navigating to bulk cart upload page...`);
+    console.log(`  - Navigating to legacy reseller portal...`);
 
     for (const item of items) {
       console.log(`    * [RPA Action] Adding SKU: ${item.sku} (Qty: ${item.quantity}) to cart...`);
