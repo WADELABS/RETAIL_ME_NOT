@@ -18,6 +18,7 @@
     "test:inventory": "node --import tsx --test services/inventory-availability/tests/*.test.ts",
     "test:communication": "node --import tsx --test services/communication/tests/*.test.ts",
     "test:accounting": "node --import tsx --test services/accounting/tests/*.test.ts",
+    "test:procurement": "node --import tsx --test services/procurement/tests/*.test.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {
