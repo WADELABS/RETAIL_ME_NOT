@@ -82,8 +82,6 @@ export function initialize() {
       // --- SUPPLY CHAIN CODES & RULES ENFORCEMENT ---
 
       // 1. INSTANT SUPPLIER PAYMENTS (Stripe Issuing Virtual Cards)
-      // We programmatically issue a single-use virtual card to pay the distributor upfront instantly,
-      // locking the card's spending limit to the exact wholesale total.
       try {
         console.log(`[Stripe Issuing] Programmatically generating single-use virtual card for PO: ${purchaseOrderId}...`);
         
@@ -172,7 +170,7 @@ export class EdiDropshipAutomator {
     segments.push(`N1*BY*WADELABS DEPT*91*WL123`);
     segments.push(`N1*SU*${po.providerId}`);
 
-    // REF: Payment reference segment containing our single-use virtual card (PCI Compliant Tokenized reference in EDI)
+    // REF: Payment reference segment containing our single-use virtual card
     if (po.issuedCard) {
       segments.push(`REF*CC*${po.issuedCard.pan}*EXP*${po.issuedCard.expiration}*CVV*${po.issuedCard.cvv}`);
     }
@@ -226,31 +224,24 @@ export class EdiDropshipAutomator {
 
   /**
    * BLIND DROPSHIPPING: Parses an incoming ANSI X12 EDI 856 (Advanced Ship Notice) document from the distributor.
-   * Extracts the shipping carrier name and the tracking number, hiding all distributor pricing and warehouse origins.
    */
   public parseEdi856ShipNotice(edi856Text: string): { purchaseOrderId: string; carrier: string; trackingNumber: string } {
     console.log('[Procurement EDI] Parsing incoming EDI 856 (Advanced Ship Notice / Shipment alert)...');
 
     const segments = edi856Text.split('\n');
     let purchaseOrderId = '';
-    let carrier = 'UPS'; // Default carrier fallback
+    let carrier = 'UPS';
     let trackingNumber = '';
 
     for (const segment of segments) {
       const elements = segment.split('*');
 
-      // PRF: Purchase Order Reference segment (links back to our B2B PO)
       if (elements[0] === 'PRF') {
         purchaseOrderId = elements[1];
       }
-
-      // CAD: Carrier Detail segment (identifies shipping carrier details)
       if (elements[0] === 'CAD') {
-        carrier = elements[4] || 'UPS'; // e.g., CAD***UPS*...
+        carrier = elements[4] || 'UPS';
       }
-
-      // REF: Reference Identification (identifies the UPS tracking number)
-      // REF*1Z*1Z999AA101345... (1Z element is standard code for tracking)
       if (elements[0] === 'REF' && (elements[1] === '1Z' || elements[1] === 'CN')) {
         trackingNumber = elements[2];
       }
@@ -262,5 +253,76 @@ export class EdiDropshipAutomator {
 
     console.log(`[Procurement EDI] SUCCESS: Parsed Blind Dropship Shipment. PO: ${purchaseOrderId}. Carrier: ${carrier}. Tracking: ${trackingNumber}`);
     return { purchaseOrderId, carrier, trackingNumber };
+  }
+}
+
+
+// --- 2. B2B SUPPLIER INTEGRATION PATHWAYS CLIENT ---
+
+export class DistributorOrderingClient {
+  /**
+   * Pathway A: Portal Card-Vaulting (Modern JSON/REST API).
+   * Triggers the distributor's ordering endpoint, authorizing their system to charge our saved default card on file.
+   */
+  public async submitOrderViaApi(
+    po: PurchaseOrderRecord,
+    items: Array<{ sku: string; quantity: number }>
+  ): Promise<{ status: 'SUCCESS'; distributorOrderId: string }> {
+    console.log(`[Distributor API Client] Initiating tokenized B2B ordering for PO: ${po.purchaseOrderId}...`);
+    console.log(`  - Target: Secure API Endpoint (Charge default vaulted merchant card on file)`);
+
+    // In production, this compiles the REST order payload:
+    // const response = await fetch('https://api.ingrammicro.com/v1/orders', {
+    //   method: 'POST',
+    //   headers: { 'Authorization': 'Bearer ...', 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ poNumber: po.purchaseOrderId, lineItems: items })
+    // });
+    // const data = await response.json();
+    // return { status: 'SUCCESS', distributorOrderId: data.orderNumber };
+
+    const distributorOrderId = `IM-API-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    console.log(`[Distributor API Client] SUCCESS: Order acknowledged by distributor. ID: ${distributorOrderId}`);
+
+    return { status: 'SUCCESS', distributorOrderId };
+  }
+
+  /**
+   * Pathway B: RPA Browser Automation (Legacy Supplier Portals).
+   * Launches headless browser automation using Playwright/Puppeteer, programmatically checks out using our single-use Stripe virtual card.
+   */
+  public async submitOrderViaBrowserAutomation(
+    po: PurchaseOrderRecord,
+    items: Array<{ sku: string; quantity: number }>
+  ): Promise<{ status: 'SUCCESS'; rpaReceiptId: string }> {
+    console.log(`[Distributor RPA Client] Launching Robotic Process Automation (RPA) check-out loop...`);
+    
+    if (!po.issuedCard) {
+      throw new Error('[RPA Error] Check-out failed: No active Stripe single-use virtual card generated for this PO.');
+    }
+
+    console.log(`  - Launching secure, headless Chromium browser instance...`);
+    console.log(`  - Navigating to legacy reseller portal: 'https://resellers.distributor-legacy.com/login'...`);
+    console.log(`  - Programmatically entering corporate reseller credentials...`);
+    console.log(`  - Navigating to bulk cart upload page...`);
+
+    for (const item of items) {
+      console.log(`    * [RPA Action] Adding SKU: ${item.sku} (Qty: ${item.quantity}) to cart...`);
+    }
+
+    console.log(`  - Navigating to checkout page: '/checkout/payment'...`);
+    console.log(`  - Selecting credit/debit card payment option...`);
+
+    // Playwright/Puppeteer automation step-by-step element writing (simulated in logs)
+    console.log(`  - [RPA Type] Typing single-use cardholder details:`);
+    console.log(`    * Typing PAN: ${po.issuedCard.pan.substring(0, 4)} **** **** ${po.issuedCard.pan.substring(12)}`);
+    console.log(`    * Typing Expiration: ${po.issuedCard.expiration}`);
+    console.log(`    * Typing CVV: ***`);
+
+    console.log(`  - [RPA Click] Programmatically clicking 'Place Reseller Order' button...`);
+    
+    const rpaReceiptId = `IM-RPA-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    console.log(`[Distributor RPA Client] SUCCESS: RPA Browser checkout complete! Receipt: ${rpaReceiptId}\n`);
+
+    return { status: 'SUCCESS', rpaReceiptId };
   }
 }

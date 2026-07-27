@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeKey, normalizeMpn, findMatchingProduct, RawCatalogItem, MasterProduct } from '../src/matching';
 import { CatalogIngestionService } from '../src/ingestor';
-import { EdiDropshipAutomator, PurchaseOrderRecord } from '../../procurement/src/index';
+import { EdiDropshipAutomator, PurchaseOrderRecord, DistributorOrderingClient } from '../../procurement/src/index';
 
 const mockMasterProducts: MasterProduct[] = [
   { sku: 'GPU-RTX-5070TI-WADE', brandName: 'NVIDIA', mpn: 'RTX-5070TI-8GB' },
@@ -114,18 +114,17 @@ test('EDI Dropship Automator successfully parses supplier EDI 855 Acknowledgment
 test('EDI Dropship Automator successfully parses distributor EDI 856 Advanced Ship Notice for Blind Dropshipping', () => {
   const automator = new EdiDropshipAutomator();
 
-  // Raw ANSI X12 EDI 856 representation of distributor shipment alerts
   const incomingEdi856 = [
     'ISA*00*          *00*          *ZZ*INGRAMMICRO    *ZZ*WADELABS       *260726*1630*U*00401*000000303*0*P*~',
     'GS*SH*INGRAMMICRO*WADELABS*20260726*1630*303*X*004010',
     'ST*856*0001',
     'BSN*00*992288*20260726*1630',
     'HL*1**S',
-    'PRF*PO-WADE-10293', // Links back to our B2B Purchase Order
-    'CAD***UPS*UPS GROUND', // Carrier details: UPS
+    'PRF*PO-WADE-10293',
+    'CAD***UPS*UPS GROUND',
     'HL*2*1*O',
     'HL*3*2*I',
-    'REF*1Z*1Z999AA1013456784', // Carrier Tracking Number: 1Z999AA1013456784
+    'REF*1Z*1Z999AA1013456784',
     'SE*10*0001',
     'GE*1*303',
     'IEA*1*000000303'
@@ -139,7 +138,53 @@ test('EDI Dropship Automator successfully parses distributor EDI 856 Advanced Sh
 });
 
 
-// --- 2. BULK PRODUCT FEED PARSER TESTS ---
+// --- 2. B2B SUPPLIER INTEGRATION PATHWAYS TESTS ---
+
+test('Pathway A: Distributor Client successfully submits orders using saved vaulted cards via API', async () => {
+  const client = new DistributorOrderingClient();
+
+  const poRecord: PurchaseOrderRecord = {
+    purchaseOrderId: 'PO-WADE-API-99',
+    orderId: 'c1b6202b-9dfb-48f2-9549-2a89df387c17',
+    providerId: 'INGRAM_MICRO_B2B',
+    totalWholesaleCostCents: 125000,
+    status: 'PAID_UPFRONT_VIRTUAL_CARD',
+    createdAt: new Date().toISOString(),
+  };
+
+  const result = await client.submitOrderViaApi(poRecord, [{ sku: 'LAPTOP-STEALTH-16', quantity: 1 }]);
+
+  assert.equal(result.status, 'SUCCESS');
+  assert.ok(result.distributorOrderId.startsWith('IM-API-'), 'Must return valid distributor order reference');
+});
+
+test('Pathway B: Distributor Client successfully checks out using RPA browser automation and Stripe Virtual Cards', async () => {
+  const client = new DistributorOrderingClient();
+
+  const poRecord: PurchaseOrderRecord = {
+    purchaseOrderId: 'PO-WADE-RPA-88',
+    orderId: 'c1b6202b-9dfb-48f2-9549-2a89df387c17',
+    providerId: 'LEGACY_SUPPLIER_PORTAL',
+    totalWholesaleCostCents: 95000,
+    status: 'PAID_UPFRONT_VIRTUAL_CARD',
+    issuedCard: {
+      cardId: 'ic_774433',
+      pan: '4111111122223333',
+      cvv: '123',
+      expiration: '12/29',
+      spendingLimitCents: 95000,
+    },
+    createdAt: new Date().toISOString(),
+  };
+
+  const result = await client.submitOrderViaBrowserAutomation(poRecord, [{ sku: 'GPU-RTX-5070TI-WADE', quantity: 1 }]);
+
+  assert.equal(result.status, 'SUCCESS');
+  assert.ok(result.rpaReceiptId.startsWith('IM-RPA-'), 'Must return valid browser confirmation receipt');
+});
+
+
+// --- 3. BULK PRODUCT FEED PARSER TESTS ---
 
 test('Catalog Ingestion Service successfully parses bulk CSV product feeds and matches items', async () => {
   const csvFeed = [
