@@ -22,16 +22,16 @@
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {
-    "eslint": "^8.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
+    "@types/uuid": "^9.0.8",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
     "jest": "^30.4.2",
     "supertest": "^7.2.2",
-    "typescript": "^5.0.0",
     "tsx": "^4.16.0",
-    "zod": "^3.23.0",
+    "typescript": "^5.0.0",
     "uuid": "^9.0.1",
-    "@types/uuid": "^9.0.8"
+    "zod": "^3.23.0"
   },
   "jest": {
     "testEnvironment": "node",
@@ -41,5 +41,8 @@
       "/services/",
       "/tests/"
     ]
+  },
+  "dependencies": {
+    "wrangler": "^4.114.0"
   }
 }
